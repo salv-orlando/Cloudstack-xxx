@@ -1030,8 +1030,8 @@
                 var formData = args.data;
                 var inputData = {};
                 var serviceProviderMap = {};
-                var serviceCapabilityMap = {};
-
+                var serviceCapabilityIndex = 0;
+								
                 $.each(formData, function(key, value) {
                   var serviceData = key.split('.');
 
@@ -1043,21 +1043,39 @@
                       serviceProviderMap[serviceData[1]] = formData[
                         'service.' + serviceData[1] + '.provider'
                       ];
-                    } else if (serviceData[0] == 'service' &&
-                               serviceData[2].indexOf('Capability') != -1 &&
-                               value == 'on') { // Services field
-
-                      serviceCapabilityMap[serviceData[1]] = serviceData[2];
-                    }
-                  } else if ((key == 'lbIsolation') && ("Lb" in serviceProviderMap)) {
-                    inputData['servicecapabilitylist[0].service'] = 'lb';
-                    inputData['servicecapabilitylist[0].capabilitytype'] = 'SupportedLbIsolation';
-                    inputData['servicecapabilitylist[0].capabilityvalue'] = value;
-                  } else if ((key == 'sourceNatType') && ("SourceNat" in serviceProviderMap)) {
-                    inputData['servicecapabilitylist[0].service'] = 'sourcenat';
-                    inputData['servicecapabilitylist[0].capabilitytype'] = 'SupportedSourceNatTypes';
-                    inputData['servicecapabilitylist[0].capabilityvalue'] = value;
-                  } else if (value != '') { // Normal data
+                    } 	                   							
+										else if((key == 'service.SourceNat.redundantRouterCapabilityCheckbox') && ("SourceNat" in serviceProviderMap)) { //if checkbox is unchecked, it won't be included in formData in the first place. i.e. it won't fall into this section
+										  inputData['serviceCapabilityList[' + serviceCapabilityIndex + '].service'] = 'SourceNat';
+											inputData['serviceCapabilityList[' + serviceCapabilityIndex + '].capabilitytype'] = "RedundantRouter";
+											inputData['serviceCapabilityList[' + serviceCapabilityIndex + '].capabilityvalue'] = true; //because this checkbox's value == "on"
+										  serviceCapabilityIndex++;
+										}		
+										else if ((key == 'service.SourceNat.sourceNatTypeDropdown') && ("SourceNat" in serviceProviderMap)) {											
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].service'] = 'SourceNat';
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'SupportedSourceNatTypes';
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilityvalue'] = value;
+										  serviceCapabilityIndex++;
+										} 
+                    else if ((key == 'service.Lb.elasticLbCheckbox') && ("Lb" in serviceProviderMap)) {	//if checkbox is unchecked, it won't be included in formData in the first place. i.e. it won't fall into this section								
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].service'] = 'lb';
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'ElasticLb'; //??? waiting for Alena's response
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilityvalue'] = true; //because this checkbox's value == "on"
+											serviceCapabilityIndex++;
+										} 										
+										else if ((key == 'service.Lb.lbIsolationDropdown') && ("Lb" in serviceProviderMap)) {											
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].service'] = 'lb';
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'SupportedLbIsolation';
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilityvalue'] = value;
+											serviceCapabilityIndex++;
+										} 
+                    else if ((key == 'service.StaticNat.elasticIpCheckbox') && ("StaticNat" in serviceProviderMap)) {	//if checkbox is unchecked, it won't be included in formData in the first place. i.e. it won't fall into this section								
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].service'] = 'StaticNat';
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'ElasticIp'; //??? waiting for Alena's response
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilityvalue'] = true; //because this checkbox's value == "on"
+											serviceCapabilityIndex++;
+										} 										
+                  } 									
+									else if (value != '') { // Normal data
                     inputData[key] = value;
                   }
                 });
@@ -1085,20 +1103,7 @@
                   inputData['serviceProviderList[' + serviceProviderIndex + '].service'] = key;
                   inputData['serviceProviderList[' + serviceProviderIndex + '].provider'] = value;
                   serviceProviderIndex++;
-                });
-
-                var serviceCapabilityIndex = 0;
-                $.each(serviceCapabilityMap, function(key, value) {
-                  var capabilityType = null;
-                  if(value == "redundantRouterCapability")
-                    capabilityType = "RedundantRouter";
-                  if(capabilityType != null) {
-                    inputData['serviceCapabilityList[' + serviceCapabilityIndex + '].service'] = key;
-                    inputData['serviceCapabilityList[' + serviceCapabilityIndex + '].capabilitytype'] = capabilityType;
-                    inputData['serviceCapabilityList[' + serviceCapabilityIndex + '].capabilityvalue'] = true;
-                    serviceCapabilityIndex++;
-                  }
-                });
+                });      
 
                 $.ajax({
                   url: createURL('createNetworkOffering'),
@@ -1248,14 +1253,14 @@
                     }
                   },
 
-                  "service.SourceNat.redundantRouterCapability" : {
+                  "service.SourceNat.redundantRouterCapabilityCheckbox" : {
                     label: "Redundant router capability",
                     isHidden: true,
                     dependsOn: 'service.SourceNat.isEnabled',
                     isBoolean: true,
                   },
 
-                  sourceNatType: {
+                  "service.SourceNat.sourceNatTypeDropdown": {
                     label: 'Supported Source NAT type',
                     isHidden: true,
                     dependsOn: 'service.SourceNat.isEnabled',
@@ -1268,8 +1273,13 @@
                       });
                     }
                   },
-
-                  lbIsolation: {
+									"service.Lb.elasticLbCheckbox" : {
+                    label: "Elastic LB",
+                    isHidden: true,
+                    dependsOn: 'service.Lb.isEnabled',
+                    isBoolean: true,
+                  },
+                  "service.Lb.lbIsolationDropdown": {
                     label: 'LB isolation',
                     isHidden: true,
                     dependsOn: 'service.Lb.isEnabled',
@@ -1281,7 +1291,13 @@
                         ]
                       })
                     }
-                  },
+                  },									
+									"service.StaticNat.elasticIpCheckbox" : {
+										label: "Elastic IP",
+										isHidden: true,
+										dependsOn: 'service.StaticNat.isEnabled',
+										isBoolean: true,
+									},	
 
 									conservemode: { label: 'Conserve mode', isBoolean: true },
 									

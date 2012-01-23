@@ -1452,6 +1452,23 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
 
         if (allocationStateStr != null && !allocationStateStr.isEmpty()) {
             Grouping.AllocationState allocationState = Grouping.AllocationState.valueOf(allocationStateStr);
+
+            if(allocationState == Grouping.AllocationState.Enabled){
+                //check if zone has necessary trafficTypes before enabling
+                try{
+                    if(NetworkType.Advanced == zone.getNetworkType()){
+                        //zone should have a physical network with public and management traffiType
+                        _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Public);
+                        _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Management);
+                    }else{
+                        //zone should have a physical network with management traffiType
+                        _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Management);
+                    }
+                }catch(InvalidParameterValueException ex){
+                    throw new InvalidParameterValueException("Cannot enable this Zone since: "+ ex.getMessage());
+                }
+            }
+            
             zone.setAllocationState(allocationState);
         }
 
@@ -2035,7 +2052,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
                 if (forVirtualNetwork) {
                     //default physical network with public traffic in the zone
                     physicalNetworkId = _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Public).getId();
-                }else{
+                } else {
                     if (zone.getNetworkType() == DataCenter.NetworkType.Basic) {
                         //default physical network with guest traffic in the zone
                         physicalNetworkId = _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Guest).getId();
@@ -2083,6 +2100,15 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
             } else if (network.getGuestType() == null || network.getGuestType() == Network.GuestType.Isolated) {
                 throw new InvalidParameterValueException("Can't create direct vlan for network id=" + networkId + " with type: " + network.getGuestType());
             }
+        }
+        
+        if (network == null) {
+        	network = _networkMgr.getNetwork(networkId);
+        }
+        
+        //Can add vlan range only to the network which allows it
+        if (!network.getSpecifyIpRanges()) {
+        	throw new InvalidParameterValueException("Network " + network + " doesn't support adding multiple ip ranges");
         }
 
         // if end ip is not specified, default it to startIp
@@ -2195,7 +2221,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
     @Override
     @DB
     public Vlan createVlanAndPublicIpRange(Long userId, Long zoneId, Long podId, String startIP, String endIP, String vlanGateway, String vlanNetmask, boolean forVirtualNetwork, String vlanId,
-            Account account, Long networkId, Long physicalNetworkId) {
+            Account account, long networkId, Long physicalNetworkId) {
         // Check that the pod ID is valid
         if (podId != null && ((_podDao.findById(podId)) == null)) {
             throw new InvalidParameterValueException("Please specify a valid pod.");
@@ -2898,6 +2924,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         TrafficType trafficType = null;
         Availability availability = null;
         Network.GuestType guestType = null;
+        boolean specifyIpRanges = cmd.getSpecifyIpRanges();
 
         // Verify traffic type
         for (TrafficType tType : TrafficType.values()) {
@@ -3021,46 +3048,67 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         //validate providers combination here
         _networkMgr.canProviderSupportServices(providerCombinationToVerify);
         
-        // verify the LB service capabilities specified in the network offering
+        // validate the LB service capabilities specified in the network offering
         Map<Capability, String> lbServiceCapabilityMap = cmd.getServiceCapabilities(Service.Lb);
         if (!serviceProviderMap.containsKey(Service.Lb) && lbServiceCapabilityMap != null && !lbServiceCapabilityMap.isEmpty()) {
             throw new InvalidParameterValueException("Capabilities for LB service can be specifed only when LB service is enabled for network offering.");
         }
         validateLoadBalancerServiceCapabilities(lbServiceCapabilityMap);
 
-        // verify the Source NAT service capabilities specified in the network offering
+        // validate the Source NAT service capabilities specified in the network offering
         Map<Capability, String> sourceNatServiceCapabilityMap = cmd.getServiceCapabilities(Service.SourceNat);
         if (!serviceProviderMap.containsKey(Service.SourceNat) && sourceNatServiceCapabilityMap != null && !sourceNatServiceCapabilityMap.isEmpty()) {
             throw new InvalidParameterValueException("Capabilities for source NAT service can be specifed only when source NAT service is enabled for network offering.");
         }
         validateSourceNatServiceCapablities(sourceNatServiceCapabilityMap);
         
+        // validate the Static Nat service capabilities specified in the network offering
+        Map<Capability, String> staticNatServiceCapabilityMap = cmd.getServiceCapabilities(Service.StaticNat);
+        if (!serviceProviderMap.containsKey(Service.StaticNat) && sourceNatServiceCapabilityMap != null && !staticNatServiceCapabilityMap.isEmpty()) {
+            throw new InvalidParameterValueException("Capabilities for static NAT service can be specifed only when static NAT service is enabled for network offering.");
+        }
+        validateStaticNatServiceCapablities(staticNatServiceCapabilityMap);
+        
         Map<Service, Map<Capability, String>> serviceCapabilityMap = new HashMap<Service, Map<Capability, String>>();
         serviceCapabilityMap.put(Service.Lb, lbServiceCapabilityMap);
         serviceCapabilityMap.put(Service.SourceNat, sourceNatServiceCapabilityMap);
+        serviceCapabilityMap.put(Service.StaticNat, staticNatServiceCapabilityMap);
         
         return createNetworkOffering(userId, name, displayText, trafficType, tags, specifyVlan, availability, networkRate, serviceProviderMap, false, guestType,
-                false, serviceOfferingId, conserveMode, serviceCapabilityMap);
+                false, serviceOfferingId, conserveMode, serviceCapabilityMap, specifyIpRanges);
     }
 
     void validateLoadBalancerServiceCapabilities(Map<Capability, String> lbServiceCapabilityMap) {
         if (lbServiceCapabilityMap != null && !lbServiceCapabilityMap.isEmpty()) {
-            if (lbServiceCapabilityMap.keySet().size() > 1 || !lbServiceCapabilityMap.containsKey(Capability.SupportedLBIsolation)) {
-                throw new InvalidParameterValueException("Only Load balancer isolation capability can be sepcified for LB service");
+            if (lbServiceCapabilityMap.keySet().size() > 2 || !lbServiceCapabilityMap.containsKey(Capability.SupportedLBIsolation)) {
+                throw new InvalidParameterValueException("Only " + Capability.SupportedLBIsolation.getName() + " and " + Capability.ElasticLb + " capabilities can be sepcified for LB service");
             }
-            String isolationCapability = lbServiceCapabilityMap.get(Capability.SupportedLBIsolation);
-            boolean dedicatedLb = isolationCapability.contains("dedicated");
-            boolean sharedLB = isolationCapability.contains("shared"); 
-            if ((dedicatedLb && sharedLB) || (!dedicatedLb && !sharedLB)){
-                throw new InvalidParameterValueException("Either dedicated or shared isolation can be specified for " + Capability.SupportedLBIsolation.getName());
-            }
-        }
+            
+            for (Capability cap : lbServiceCapabilityMap.keySet()) {
+            	String value = lbServiceCapabilityMap.get(cap);
+            	if (cap == Capability.SupportedLBIsolation) {
+            		boolean dedicatedLb = value.contains("dedicated");
+                    boolean sharedLB = value.contains("shared"); 
+                    if ((dedicatedLb && sharedLB) || (!dedicatedLb && !sharedLB)){
+                        throw new InvalidParameterValueException("Either dedicated or shared isolation can be specified for " + Capability.SupportedLBIsolation.getName());
+                    }
+        		} else if (cap == Capability.ElasticLb) {
+                    boolean enabled = value.contains("true");
+                    boolean disabled = value.contains("false");
+                    if (!enabled && !disabled) {
+                        throw new InvalidParameterValueException("Unknown specified value for " + Capability.ElasticLb.getName());
+                    }
+                } else {
+                    throw new InvalidParameterValueException("Only " + Capability.SupportedLBIsolation.getName() + " and " + Capability.ElasticLb + " capabilities can be sepcified for LB service");
+                }
+        	}
+        }            
     }
 
     void validateSourceNatServiceCapablities(Map<Capability, String> sourceNatServiceCapabilityMap) {
         if (sourceNatServiceCapabilityMap != null && !sourceNatServiceCapabilityMap.isEmpty()) {
             if (sourceNatServiceCapabilityMap.keySet().size() > 2) {
-                throw new InvalidParameterValueException("Only " + Capability.SupportedSourceNatTypes.getName() + " and " + Capability.RedundantRouter + " capabilities can be sepcified for firewall service");
+                throw new InvalidParameterValueException("Only " + Capability.SupportedSourceNatTypes.getName() + " and " + Capability.RedundantRouter + " capabilities can be sepcified for source nat service");
             }
             
             for (Capability capability : sourceNatServiceCapabilityMap.keySet()) {
@@ -3078,7 +3126,29 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
                         throw new InvalidParameterValueException("Unknown specified value for " + Capability.RedundantRouter.getName());
                     }
                 } else {
-                    throw new InvalidParameterValueException("Only " + Capability.SupportedSourceNatTypes.getName() + " and " + Capability.RedundantRouter + " capabilities can be sepcified for firewall service");
+                    throw new InvalidParameterValueException("Only " + Capability.SupportedSourceNatTypes.getName() + " and " + Capability.RedundantRouter + " capabilities can be sepcified for source nat service");
+                }
+            }
+        }
+    }
+    
+    
+    void validateStaticNatServiceCapablities(Map<Capability, String> staticNatServiceCapabilityMap) {
+        if (staticNatServiceCapabilityMap != null && !staticNatServiceCapabilityMap.isEmpty()) {
+            if (staticNatServiceCapabilityMap.keySet().size() > 1) {
+                throw new InvalidParameterValueException("Only " + Capability.ElasticIp.getName() + " capabilitiy can be sepcified for static nat service");
+            }
+            
+            for (Capability capability : staticNatServiceCapabilityMap.keySet()) {
+                String value = staticNatServiceCapabilityMap.get(capability);
+                if (capability == Capability.ElasticIp) {
+                    boolean enabled = value.contains("true");
+                    boolean disabled = value.contains("false");
+                    if (!enabled && !disabled) {
+                        throw new InvalidParameterValueException("Unknown specified value for " + Capability.ElasticIp.getName());
+                    }
+                } else {
+                    throw new InvalidParameterValueException("Only " + Capability.ElasticIp.getName() + " capabilitiy can be sepcified for static nat service");
                 }
             }
         }
@@ -3088,7 +3158,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
     @DB
     public NetworkOfferingVO createNetworkOffering(long userId, String name, String displayText, TrafficType trafficType, String tags, boolean specifyVlan, Availability availability,
             Integer networkRate, Map<Service, Set<Provider>> serviceProviderMap, boolean isDefault, Network.GuestType type, boolean systemOnly, 
-            Long serviceOfferingId, boolean conserveMode, Map<Service, Map<Capability, String>> serviceCapabilityMap) {
+            Long serviceOfferingId, boolean conserveMode, Map<Service, Map<Capability, String>> serviceCapabilityMap, boolean specifyIpRanges) {
 
         String multicastRateStr = _configDao.getValue("multicast.throttling.rate");
         int multicastRate = ((multicastRateStr == null) ? 10 : Integer.parseInt(multicastRateStr));
@@ -3110,14 +3180,19 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
 
         Map<Capability, String> lbServiceCapabilityMap = serviceCapabilityMap.get(Service.Lb);
         boolean dedicatedLb = false;
+        boolean elasticLb = false;
         if ((lbServiceCapabilityMap != null) && (!lbServiceCapabilityMap.isEmpty())) { 
-            String isolationCapability = lbServiceCapabilityMap.get(Capability.SupportedLBIsolation);
-            
+            String isolationCapability = lbServiceCapabilityMap.get(Capability.SupportedLBIsolation); 
             if (isolationCapability != null) {           	
             	 _networkMgr.checkCapabilityForProvider(serviceProviderMap.get(Service.Lb), Service.Lb, Capability.SupportedLBIsolation, isolationCapability);            	
             	dedicatedLb = isolationCapability.contains("dedicated");
             } else {
             	dedicatedLb = true;
+            }
+            
+            String param = lbServiceCapabilityMap.get(Capability.ElasticLb);
+            if (param != null) {
+            	elasticLb = param.contains("true");
             }
         }
 
@@ -3129,20 +3204,25 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
             if (sourceNatType != null) {
             	_networkMgr.checkCapabilityForProvider(serviceProviderMap.get(Service.SourceNat), Service.SourceNat, Capability.SupportedSourceNatTypes, sourceNatType);            	
             	sharedSourceNat = sourceNatType.contains("perzone");
-            } else {
-            	sharedSourceNat = false;
             }
             
             String param = sourceNatServiceCapabilityMap.get(Capability.RedundantRouter);
             if (param != null) {
             	_networkMgr.checkCapabilityForProvider(serviceProviderMap.get(Service.SourceNat), Service.SourceNat, Capability.RedundantRouter, param);            	
                 redundantRouter = param.contains("true");
-            } else {
-            	redundantRouter = false;
+            }
+        }
+        
+        Map<Capability, String> staticNatServiceCapabilityMap = serviceCapabilityMap.get(Service.StaticNat);
+        boolean elasticIp = false;
+        if ((staticNatServiceCapabilityMap != null) && (!staticNatServiceCapabilityMap.isEmpty())) { 
+            String param = staticNatServiceCapabilityMap.get(Capability.ElasticIp);
+            if (param != null) {
+                elasticIp = param.contains("true");
             }
         }
 
-        NetworkOfferingVO offering = new NetworkOfferingVO(name, displayText, trafficType, systemOnly, specifyVlan, networkRate, multicastRate, isDefault, availability, tags, type, conserveMode, dedicatedLb, sharedSourceNat, redundantRouter);
+        NetworkOfferingVO offering = new NetworkOfferingVO(name, displayText, trafficType, systemOnly, specifyVlan, networkRate, multicastRate, isDefault, availability, tags, type, conserveMode, dedicatedLb, sharedSourceNat, redundantRouter, elasticIp, elasticLb, specifyIpRanges);
         
         if (serviceOfferingId != null) {
             offering.setServiceOfferingId(serviceOfferingId);
@@ -3198,6 +3278,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         Long networkId = cmd.getNetworkId();
         String guestIpType = cmd.getGuestIpType();
         List<String> supportedServicesStr = cmd.getSupportedServices();
+        Object specifyIpRanges = cmd.getSpecifyIpRanges();
 
         if (zoneId != null) {
             zone = getZone(zoneId);
@@ -3246,6 +3327,10 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
 
         if (state != null) {
             sc.addAnd("state", SearchCriteria.Op.EQ, state);
+        }
+        
+        if (specifyIpRanges != null) {
+        	sc.addAnd("specifyIpRanges", SearchCriteria.Op.EQ, specifyIpRanges);
         }
 
         if (zone != null) {

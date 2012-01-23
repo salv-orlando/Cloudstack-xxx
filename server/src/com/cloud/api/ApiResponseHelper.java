@@ -713,6 +713,7 @@ public class ApiResponseHelper implements ResponseGenerator {
         ipResponse.setZoneId(zoneId);
         ipResponse.setZoneName(ApiDBUtils.findZoneById(ipAddress.getDataCenterId()).getName());
         ipResponse.setSourceNat(ipAddress.isSourceNat());
+        ipResponse.setIsElastic(ipAddress.getElastic());
 
         // get account information
         populateOwner(ipResponse, ipAddress);
@@ -2584,6 +2585,7 @@ public class ApiResponseHelper implements ResponseGenerator {
         response.setIsDefault(offering.isDefault());
         response.setSpecifyVlan(offering.getSpecifyVlan());
         response.setConserveMode(offering.isConserveMode());
+        response.setSpecifyIpRanges(offering.getSpecifyIpRanges());
         response.setAvailability(offering.getAvailability().toString());
         response.setNetworkRate(ApiDBUtils.getNetworkRate(offering.getId()));
         if (offering.getServiceOfferingId() != null) {
@@ -2618,10 +2620,17 @@ public class ApiResponseHelper implements ResponseGenerator {
 
             if (Service.Lb == service) {
                 List<CapabilityResponse> lbCapResponse = new ArrayList<CapabilityResponse>();
+                
                 CapabilityResponse lbIsoaltion = new CapabilityResponse();
                 lbIsoaltion.setName(Capability.SupportedLBIsolation.getName());
                 lbIsoaltion.setValue(offering.getDedicatedLB()?"dedicated":"shared");
                 lbCapResponse.add(lbIsoaltion);
+                
+                CapabilityResponse eLb = new CapabilityResponse();
+                eLb.setName(Capability.ElasticLb.getName());
+                eLb.setValue(offering.getElasticLb()?"true":"false");
+                lbCapResponse.add(eLb);
+                
                 svcRsp.setCapabilities(lbCapResponse);
             } else if (Service.SourceNat == service) {
                 List<CapabilityResponse> capabilities = new ArrayList<CapabilityResponse>();
@@ -2636,7 +2645,16 @@ public class ApiResponseHelper implements ResponseGenerator {
                 capabilities.add(redundantRouter);
                 
                 svcRsp.setCapabilities(capabilities);
-            } 
+            } else if (service == Service.StaticNat) {
+                List<CapabilityResponse> staticNatCapResponse = new ArrayList<CapabilityResponse>();
+                
+                CapabilityResponse eIp = new CapabilityResponse();
+                eIp.setName(Capability.ElasticIp.getName());
+                eIp.setValue(offering.getElasticLb()?"true":"false");
+                staticNatCapResponse.add(eIp);
+
+                svcRsp.setCapabilities(staticNatCapResponse);
+            }
 
             serviceResponses.add(svcRsp);
         }
@@ -2754,6 +2772,8 @@ public class ApiResponseHelper implements ResponseGenerator {
             response.setDomainId(dedicatedDomainId);
             response.setDomainName(domain.getName());
         }
+        
+        response.setSpecifyIpRanges(network.getSpecifyIpRanges());
 
         response.setObjectName("network");
         return response;

@@ -830,13 +830,13 @@ public class ConfigurationServerImpl implements ConfigurationServer {
     @DB
     protected void createDefaultNetworkOfferings() {
 
-        NetworkOfferingVO publicNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemPublicNetwork, TrafficType.Public);
+        NetworkOfferingVO publicNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemPublicNetwork, TrafficType.Public, true);
         publicNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(publicNetworkOffering);
-        NetworkOfferingVO managementNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemManagementNetwork, TrafficType.Management);
+        NetworkOfferingVO managementNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemManagementNetwork, TrafficType.Management, false);
         managementNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(managementNetworkOffering);
-        NetworkOfferingVO controlNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemControlNetwork, TrafficType.Control);
+        NetworkOfferingVO controlNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemControlNetwork, TrafficType.Control, false);
         controlNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(controlNetworkOffering);
-        NetworkOfferingVO storageNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemStorageNetwork, TrafficType.Storage);
+        NetworkOfferingVO storageNetworkOffering = new NetworkOfferingVO(NetworkOfferingVO.SystemStorageNetwork, TrafficType.Storage, true);
         storageNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(storageNetworkOffering);
         
         //populate providers
@@ -864,6 +864,14 @@ public class ConfigurationServerImpl implements ConfigurationServer {
         defaultIsolatedSourceNatEnabledNetworkOfferingProviders.put(Service.StaticNat, Provider.VirtualRouter);
         defaultIsolatedSourceNatEnabledNetworkOfferingProviders.put(Service.PortForwarding, Provider.VirtualRouter);
         defaultIsolatedSourceNatEnabledNetworkOfferingProviders.put(Service.Vpn, Provider.VirtualRouter);
+        
+        Map<Network.Service, Network.Provider> netscalerServiceProviders = new HashMap<Network.Service, Network.Provider>();
+        netscalerServiceProviders.put(Service.Dhcp, Provider.VirtualRouter);
+        netscalerServiceProviders.put(Service.Dns, Provider.VirtualRouter);
+        netscalerServiceProviders.put(Service.UserData, Provider.VirtualRouter);
+        netscalerServiceProviders.put(Service.SecurityGroup, Provider.SecurityGroupProvider);
+        netscalerServiceProviders.put(Service.StaticNat, Provider.Netscaler);
+        netscalerServiceProviders.put(Service.Lb, Provider.Netscaler);
 
         
         //The only one diff between 1 and 2 network offerings is that the first one has SG enabled. In Basic zone only first network offering has to be enabled, in Advance zone - the second one
@@ -876,7 +884,7 @@ public class ConfigurationServerImpl implements ConfigurationServer {
                 "Offering for Shared Security group enabled networks", 
                 TrafficType.Guest, 
                 false, true, null, null, true, Availability.Optional, 
-                null, Network.GuestType.Shared, true);
+                null, Network.GuestType.Shared, true, true);
         
         deafultSharedSGNetworkOffering.setState(NetworkOffering.State.Enabled);
         deafultSharedSGNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(deafultSharedSGNetworkOffering);
@@ -893,7 +901,7 @@ public class ConfigurationServerImpl implements ConfigurationServer {
                 "Offering for Shared networks", 
                 TrafficType.Guest, 
                 false, true, null, null, true, Availability.Optional, 
-                null, Network.GuestType.Shared, true);
+                null, Network.GuestType.Shared, true, true);
         
         defaultSharedNetworkOffering.setState(NetworkOffering.State.Enabled);
         defaultSharedNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(defaultSharedNetworkOffering);
@@ -910,7 +918,7 @@ public class ConfigurationServerImpl implements ConfigurationServer {
                 "Offering for Isolated networks with Source Nat service enabled", 
                 TrafficType.Guest, 
                 false, false, null, null, true, Availability.Required, 
-                null, Network.GuestType.Isolated, true);
+                null, Network.GuestType.Isolated, true, false);
         
         defaultIsolatedSourceNatEnabledNetworkOffering.setState(NetworkOffering.State.Enabled);
         defaultIsolatedSourceNatEnabledNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(defaultIsolatedSourceNatEnabledNetworkOffering);
@@ -928,7 +936,7 @@ public class ConfigurationServerImpl implements ConfigurationServer {
                 "Offering for Isolated networks with no Source Nat service", 
                 TrafficType.Guest, 
                 false, true, null, null, true, Availability.Optional, 
-                null, Network.GuestType.Isolated, true);
+                null, Network.GuestType.Isolated, true, true);
         
         defaultIsolatedEnabledNetworkOffering.setState(NetworkOffering.State.Enabled);
         defaultIsolatedEnabledNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(defaultIsolatedEnabledNetworkOffering);
@@ -939,8 +947,24 @@ public class ConfigurationServerImpl implements ConfigurationServer {
             s_logger.trace("Added service for the network offering: " + offService);
         }
         
+        //Offering #5
+        NetworkOfferingVO defaultNetscalerNetworkOffering = new NetworkOfferingVO(
+                NetworkOffering.DefaultSharedEIPandELBNetworkOffering, 
+                "Offering for Shared networks with Elastic IP and Elastic LB capabilities", 
+                TrafficType.Guest, 
+                false, true, null, null, true, Availability.Optional, 
+                null, Network.GuestType.Shared, true, false, false, false, true, true, true);
+        		        
+        defaultNetscalerNetworkOffering.setState(NetworkOffering.State.Enabled);
+        defaultNetscalerNetworkOffering = _networkOfferingDao.persistDefaultNetworkOffering(defaultNetscalerNetworkOffering);
+        
+        for (Service service : netscalerServiceProviders.keySet()) {
+            NetworkOfferingServiceMapVO offService = new NetworkOfferingServiceMapVO(defaultNetscalerNetworkOffering.getId(), service, netscalerServiceProviders.get(service));
+            _ntwkOfferingServiceMapDao.persist(offService);
+            s_logger.trace("Added service for the network offering: " + offService);
+        }
+        
         txn.commit();
-       
     }
     
     private void createDefaultNetworks() {
@@ -975,32 +999,26 @@ public class ConfigurationServerImpl implements ConfigurationServer {
                     BroadcastDomainType broadcastDomainType = null;
                     TrafficType trafficType= offering.getTrafficType();
                     
-                    boolean isNetworkDefault = false;
+                    boolean specifyIpRanges = false;
+
                     if (trafficType == TrafficType.Management) {
                         broadcastDomainType = BroadcastDomainType.Native;
+                    } else if (trafficType == TrafficType.Storage) {
+                        broadcastDomainType = BroadcastDomainType.Native;
+                        specifyIpRanges = true;
                     } else if (trafficType == TrafficType.Control) {
                         broadcastDomainType = BroadcastDomainType.LinkLocal;
                     } else if (offering.getTrafficType() == TrafficType.Public) {
                         if ((zone.getNetworkType() == NetworkType.Advanced && !zone.isSecurityGroupEnabled()) || zone.getNetworkType() == NetworkType.Basic) {
+                        	specifyIpRanges = true;
                             broadcastDomainType = BroadcastDomainType.Vlan;
                         } else {
                             continue;
                         }
-                    } else if (offering.getTrafficType() == TrafficType.Guest) {
-                        if (zone.getNetworkType() == NetworkType.Basic) {
-                            isNetworkDefault = true;
-                            broadcastDomainType = BroadcastDomainType.Native;
-                        } else {
-                            continue;
-                        }
-                        
-                        networkDomain = "cs" + Long.toHexString(Account.ACCOUNT_ID_SYSTEM) + _domainSuffix;
-                    } else if (offering.getTrafficType() == TrafficType.Storage) {
-                    	broadcastDomainType = BroadcastDomainType.Storage;
                     }
                     
                     if (broadcastDomainType != null) {
-                        NetworkVO network = new NetworkVO(id, trafficType, mode, broadcastDomainType, networkOfferingId, domainId, accountId, related, null, null, networkDomain, Network.GuestType.Shared, zoneId, null, null);
+                        NetworkVO network = new NetworkVO(id, trafficType, mode, broadcastDomainType, networkOfferingId, domainId, accountId, related, null, null, networkDomain, Network.GuestType.Shared, zoneId, null, null, specifyIpRanges);
                         network.setGuruName(guruNames.get(network.getTrafficType()));
                         network.setDns1(zone.getDns1());
                         network.setDns2(zone.getDns2());

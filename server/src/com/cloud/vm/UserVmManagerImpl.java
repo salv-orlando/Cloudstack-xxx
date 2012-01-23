@@ -102,6 +102,7 @@ import com.cloud.event.UsageEventVO;
 import com.cloud.event.dao.EventDao;
 import com.cloud.event.dao.UsageEventDao;
 import com.cloud.exception.ConcurrentOperationException;
+import com.cloud.exception.InsufficientAddressCapacityException;
 import com.cloud.exception.InsufficientCapacityException;
 import com.cloud.exception.InvalidParameterValueException;
 import com.cloud.exception.ManagementServerException;
@@ -110,7 +111,6 @@ import com.cloud.exception.PermissionDeniedException;
 import com.cloud.exception.ResourceAllocationException;
 import com.cloud.exception.ResourceUnavailableException;
 import com.cloud.exception.StorageUnavailableException;
-import com.cloud.exception.UnsupportedServiceException;
 import com.cloud.exception.VirtualMachineMigrationException;
 import com.cloud.ha.HighAvailabilityManager;
 import com.cloud.host.Host;
@@ -1260,11 +1260,11 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
             s_logger.warn("Fail to remove vm id=" + vmId + " from load balancers as a part of expunge process");
         }
 
-        // If vm is assigned to static nat, disable static nat for the ip address
+        // If vm is assigned to static nat, disable static nat for the ip address and disassociate ip if elasticIP is enabled
         IPAddressVO ip = _ipAddressDao.findByAssociatedVmId(vmId);
         try {
             if (ip != null) {
-                if (_rulesMgr.disableStaticNat(ip.getId())) {
+                if (_rulesMgr.disableStaticNat(ip.getId(), _accountMgr.getAccount(Account.ACCOUNT_ID_SYSTEM), User.UID_SYSTEM, true)) {
                     s_logger.debug("Disabled 1-1 nat for ip address " + ip + " as a part of vm id=" + vmId + " expunge");
                 } else {
                     s_logger.warn("Failed to disable static nat for ip address " + ip + " as a part of vm id=" + vmId + " expunge");
@@ -2240,17 +2240,7 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
                     throw new InvalidParameterValueException("Unable to find network by id " + networkIdList.get(0).longValue());
                 }
 
-                // Perform account permission check
-                if (network.getGuestType() != Network.GuestType.Shared) {
-                    List<NetworkVO> networkMap = _networkDao.listBy(owner.getId(), network.getId());
-                    if (networkMap == null || networkMap.isEmpty()) {
-                        throw new PermissionDeniedException("Unable to create a vm using network with id " + network.getId() + ", permission denied");
-                    }
-                } else {
-                    if (!_networkMgr.isNetworkAvailableInDomain(networkId, owner.getDomainId())) {
-                        throw new PermissionDeniedException("Shared network id=" + networkId + " is not available in domain id=" + owner.getDomainId());
-                    }
-                }
+                _networkMgr.checkNetworkPermissions(owner, network);
 
                 //don't allow to use system networks 
                 NetworkOffering networkOffering = _configMgr.getNetworkOffering(network.getNetworkOfferingId());
@@ -2591,9 +2581,9 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
         } finally {
             updateVmStateForFailedVmCreation(vm.getId());
         }
-
+        
         if (template.getEnablePassword()) {
-            // this value is not being sent to the backend; need only for api dispaly purposes
+            // this value is not being sent to the backend; need only for api display purposes
             vm.setPassword(password);
         }
 
@@ -2648,7 +2638,7 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
 
     @Override
     public boolean finalizeDeployment(Commands cmds, VirtualMachineProfile<UserVmVO> profile, DeployDestination dest, ReservationContext context) {
-        UserVmVO userVm = profile.getVirtualMachine();
+    	UserVmVO userVm = profile.getVirtualMachine();
         List<NicVO> nics = _nicDao.listByVmId(userVm.getId());
         for (NicVO nic : nics) {
             NetworkVO network = _networkDao.findById(nic.getNetworkId());
@@ -2657,7 +2647,6 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
                 userVm.setPrivateMacAddress(nic.getMacAddress());
             }
         }
-        _vmDao.update(userVm.getId(), userVm);
         return true;
     }
 
@@ -2667,7 +2656,7 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
     }
 
     @Override
-    public boolean finalizeStart(VirtualMachineProfile<UserVmVO> profile, long hostId, Commands cmds, ReservationContext context) {
+    public boolean finalizeStart(VirtualMachineProfile<UserVmVO> profile, long hostId, Commands cmds, ReservationContext context) throws InsufficientAddressCapacityException{
         UserVmVO vm = profile.getVirtualMachine();
 
         Answer[] answersToCmds = cmds.getAnswers();
@@ -2729,8 +2718,11 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
                 s_logger.info("Detected that ip changed in the answer, updated nic in the db with new ip " + returnedIp);
             }
         }
-
-        return true;
+        
+        //enable elastic ip for vm
+         _rulesMgr.enableElasticIpAndStaticNatForVm(profile.getVirtualMachine());
+         
+         return true;
     }
 
     @Override
@@ -3441,17 +3433,7 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
 	                        throw new InvalidParameterValueException("Unable to find network by id " + networkId);
 	                    }
 	
-	                    // Perform account permission check
-	                    if (network.getGuestType() != Network.GuestType.Shared) {
-	                        List<NetworkVO> networkMap = _networkDao.listBy(newAccount.getId(), network.getId());
-	                        if (networkMap == null || networkMap.isEmpty()) {
-	                            throw new PermissionDeniedException("Unable to create a vm using network with id " + network.getId() + ", permission denied");
-	                        }
-	                    } else {
-	                        if (!_networkMgr.isNetworkAvailableInDomain(networkId, newAccount.getDomainId())) {
-	                            throw new PermissionDeniedException("Shared network id=" + networkId + " is not available in domain id=" + newAccount.getDomainId());
-	                        }
-	                    }
+	                    _networkMgr.checkNetworkPermissions(newAccount, network);
 	
 	                    //don't allow to use system networks 
 	                    NetworkOffering networkOffering = _configMgr.getNetworkOffering(network.getNetworkOfferingId());
@@ -3586,4 +3568,6 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
         s_logger.debug("Restore VM " + vmId + " with template " + root.getTemplateId() + " successfully");
         return vm;
     }
+    
+    
 }
