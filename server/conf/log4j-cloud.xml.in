@@ -92,7 +92,7 @@
    <!-- ======================= -->
 
    <root>
-      <level value="INFO"/>
+      <level value="DEBUG"/>
       <appender-ref ref="SYSLOG"/>
       <appender-ref ref="CONSOLE"/>
       <appender-ref ref="FILE"/>

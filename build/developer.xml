@@ -97,7 +97,7 @@
   </target>
 
   <target name="start-tomcat" depends="stop-tomcat">
-    <echo message="Start Tomcat" />
+    <echo message="Start Tomcat CICCIO STORTO" />
     <java dir="${tomcat.home}/bin/" jar="${tomcat.home}/bin/bootstrap.jar" fork="true">
       <jvmarg value="${assertion}"/>
       <jvmarg value="-Dcom.sun.management.jmxremote.port=${jmxport}"/>
@@ -112,6 +112,7 @@
   </target>
 
   <target name="debug-tomcat">
+  	<echo message="Start Tomcat CICCIO STORTO DEBUG" />
     <java jar="${tomcat.home}/bin/bootstrap.jar" fork="true">
       <jvmarg value="-Dcatalina.home=${tomcat.home}"/>
       <jvmarg value="-Dcom.sun.management.jmxremote.port=${jmxport}"/>

@@ -779,4 +779,17 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
         
     }
 
+	@Override
+	public void checkCapabilityForProvider(Set<Provider> providers,
+			Service service, Capability cap, String capValue) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public Provider getDefaultUniqueProviderForService(String serviceName) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
 }

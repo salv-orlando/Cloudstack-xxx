@@ -140,6 +140,7 @@ public class ComponentLocator implements ComponentLocatorMBean {
                 s_logger.info("Unable to find " + filename);
                 return null;
             }
+            s_logger.debug("If you can see me debug level WORKS. CIAO.");
             s_logger.info("Config file found at " + file.getAbsolutePath() + ".  Configuring " + _serverName);
             XmlHandler handler = new XmlHandler(_serverName);
             saxParser.parse(file, handler);
@@ -768,14 +769,17 @@ public class ComponentLocator implements ComponentLocatorMBean {
     protected static ComponentLocator getLocatorInternal(String server, boolean setInThreadLocal, String configFileName, String log4jFilename) {
         synchronized(s_once) {
             if (!s_once) {
+            	System.out.println("CAVOLO AMARO " + log4jFilename);
                 File file = PropertiesUtil.findConfigFile(log4jFilename + ".xml");
                 if (file != null) {
+                	System.out.println("log4j configuration found at " + file.getAbsolutePath());
                     s_logger.info("log4j configuration found at " + file.getAbsolutePath());
                     DOMConfigurator.configureAndWatch(file.getAbsolutePath());
                 } else {
                     file = PropertiesUtil.findConfigFile(log4jFilename + ".properties");
                     if (file != null) {
-                        s_logger.info("log4j configuration found at " + file.getAbsolutePath());
+                    	System.out.println("log4j configuration found at " + file.getAbsolutePath());
+                    	s_logger.info("log4j configuration found at " + file.getAbsolutePath());
                         PropertyConfigurator.configureAndWatch(file.getAbsolutePath());
                     }
                 }
