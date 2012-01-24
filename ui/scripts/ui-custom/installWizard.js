@@ -414,29 +414,31 @@
         tooltipID: 'addPod',
         diagram: '.part.zone, .part.pod',
         prevStepID: 'addPodIntro',
-        nextStepID: 'addGuestNetwork',
+        nextStepID: 'configureGuestTraffic',
         form: {
           name: { label: 'Name', validation: { required: true }},
-          gateway: { label: 'Gateway', validation: { required: true }},
-          netmask: { label: 'Netmask', validation: { required: true }},
-          ipRange: { label: 'IP Range', range: ['startip', 'endip'], validation: { required: true }}
+          reservedSystemGateway: { label: 'Gateway', validation: { required: true }},
+          reservedSystemNetmask: { label: 'Netmask', validation: { required: true }},
+          ipRange: {
+            label: 'IP Range',
+            range: ['reservedSystemStartIp', 'reservedSystemEndIp'],
+            validation: { required: true }
+          }
         }
       }),
 
       /**
        * Add guest network form
        */
-      addGuestNetwork: elems.step({
+      configureGuestTraffic: elems.step({
         title: 'Add guest network',
         id: 'add-guest-network',
-        stateID: 'guestNetwork',
-        tooltipID: 'addGuestNetwork',
+        stateID: 'guestTraffic',
+        tooltipID: 'configureGuestTraffic',
         diagram: '.part.zone, .part.pod',
         prevStepID: 'addPod',
         nextStepID: 'addClusterIntro',
         form: {
-          name: { label: 'Name', validation: { required: true } },
-          description: { label: 'Description', validation: { required: true } },
           guestGateway: { label: 'Gateway', validation: { required: true } },
           guestNetmask: { label: 'Netmask', validation: { required: true } },
           guestIPRange: { label: 'IP Range', range: ['guestStartIp', 'guestEndIp'], validation: { required: true } }
@@ -451,7 +453,7 @@
         title: "Let's add a cluster.",
         subtitle: 'What is a cluster?',
         copyID: 'whatIsACluster',
-        prevStepID: 'addGuestNetwork',
+        prevStepID: 'configureGuestTraffic',
         nextStepID: 'addCluster',
         diagram: '.part.zone, .part.cluster'
       }),
@@ -554,6 +556,15 @@
           name: {
             label: 'Name',
             validation: { required: true }
+          },
+
+          protocol: {
+            label: 'Protocol',
+            select: function(args) {
+              args.response.success({
+                data: { id: 'nfs', description: 'NFS' }
+              });
+            }
           },
 
           server: {
