@@ -988,19 +988,8 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
             txn.start();
 
-            boolean sharedSourceNat = false;
-            
-            try {
-            	Map<Network.Capability, String> sourceNatCapabilities = getNetworkServiceCapabilities(network.getId(), Service.SourceNat);
-            	if (sourceNatCapabilities != null) {
-                    String supportedSourceNatTypes = sourceNatCapabilities.get(Capability.SupportedSourceNatTypes).toLowerCase();
-                    if (supportedSourceNatTypes.contains("zone")) {
-                        sharedSourceNat = true;
-                    }
-                }
-            } catch (UnsupportedServiceException ex) {
-            	//service is not supported, skip
-            } 
+            NetworkOffering offering = _networkOfferingDao.findById(network.getNetworkOfferingId());      
+            boolean sharedSourceNat = offering.getSharedSourceNat();
 
             if (!sharedSourceNat) {
                 // First IP address should be source nat when it's being associated with Guest Virtual network
@@ -1675,16 +1664,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         // If this is a 1) guest virtual network 2) network has sourceNat service 3) network offering does not support a Shared source NAT rule,
         // associate a source NAT IP (if one isn't already associated with the network)
 
-        boolean sharedSourceNat = false;
-        if (areServicesSupportedInNetwork(network.getId(), Service.SourceNat)) {
-            Map<Network.Capability, String> sourceNatCapabilities = getNetworkServiceCapabilities(network.getId(), Service.SourceNat);
-            if (sourceNatCapabilities != null) {
-                String supportedSourceNatTypes = sourceNatCapabilities.get(Capability.SupportedSourceNatTypes).toLowerCase();
-                if (supportedSourceNatTypes.contains("zone")) {
-                    sharedSourceNat = true;
-                }
-            }
-        }
+        boolean sharedSourceNat = offering.getSharedSourceNat();
 
         if (network.getGuestType() == Network.GuestType.Isolated && areServicesSupportedInNetwork(network.getId(), Service.SourceNat) && !sharedSourceNat) {
             List<IPAddressVO> ips = _ipAddressDao.listByAssociatedNetwork(network.getId(), true);
@@ -1897,7 +1877,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
     @Override
     @DB
     @ActionEvent(eventType = EventTypes.EVENT_NET_IP_RELEASE, eventDescription = "disassociating Ip", async = true)
-    public boolean disassociateIpAddress(long ipAddressId) {
+    public boolean disassociateIpAddress(long ipAddressId) throws InsufficientAddressCapacityException{
         Long userId = UserContext.current().getCallerUserId();
         Account caller = UserContext.current().getCaller();
 
@@ -1940,6 +1920,13 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
         boolean success = releasePublicIpAddress(ipAddressId, userId, caller);
         if (success) {
+        	Network guestNetwork = getNetwork(ipVO.getAssociatedWithNetworkId());
+     		NetworkOffering offering = _configMgr.getNetworkOffering(guestNetwork.getNetworkOfferingId());
+     		Long vmId = ipVO.getAssociatedWithVmId();
+     		if (offering.getElasticIp() && vmId != null)  {
+     			_rulesMgr.enableElasticIpAndStaticNatForVm(_userVmDao.findById(vmId), true);
+     			return true;
+     		} 
         	return true;
         } else {
         	s_logger.warn("Failed to release public ip address id=" + ipAddressId);
@@ -4993,7 +4980,6 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             if (pNtwkId == null) {
                 throw new InvalidParameterValueException("Unable to find physical network which match the tags " + tag);
             }
-
             return pNtwkId;
         } else {
             return pNtwks.get(0).getId();
@@ -5227,6 +5213,11 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
     @Override
     public boolean isSecurityGroupSupportedInNetwork(Network network) {
+    	if (network.getTrafficType() != TrafficType.Guest) {
+    		s_logger.trace("Security group can be enabled for Guest networks only; and network " + network + " has a diff traffic type");
+    		return false;
+    	}
+    	
         Long physicalNetworkId = network.getPhysicalNetworkId();
 
         //physical network id can be null in Guest Network in Basic zone, so locate the physical network
@@ -5578,6 +5569,34 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
     @Override
     public String getNetworkTag(HypervisorType hType, Network network) {
+    	//no network tag for control traffic type
+    	if (network.getTrafficType() == TrafficType.Control) {
+    		return null;
+    	}
+    	
+    	Long physicalNetworkId = null;
+    	if (network.getTrafficType() != TrafficType.Guest) {
+        	physicalNetworkId = getNonGuestNetworkPhysicalNetworkId(network);
+    	} else {
+    		NetworkOffering offering = _configMgr.getNetworkOffering(network.getNetworkOfferingId());
+    		physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), offering.getTags());
+    	}
+
+        if (physicalNetworkId == null) {
+            assert (false) : "Can't get the physical network";
+            s_logger.warn("Can't get the physical network");
+            return null;
+        }
+
+        return _pNTrafficTypeDao.getNetworkTag(physicalNetworkId, network.getTrafficType(), hType);
+    }
+
+	protected Long getNonGuestNetworkPhysicalNetworkId(Network network) {
+		//no physical network for control traffic type
+    	if (network.getTrafficType() == TrafficType.Control) {
+    		return null;
+    	}
+    	
         Long physicalNetworkId = network.getPhysicalNetworkId();
 
         if (physicalNetworkId == null) {
@@ -5595,15 +5614,8 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
                 }
             }
         }
-
-        if (physicalNetworkId == null) {
-            assert (false) : "Can't get the physical network";
-            s_logger.warn("Can't get the physical network");
-            return null;
-        }
-
-        return _pNTrafficTypeDao.getNetworkTag(physicalNetworkId, network.getTrafficType(), hType);
-    }
+		return physicalNetworkId;
+	}
 
 
     @Override
@@ -5701,9 +5713,14 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
     @Override
     public Long getPhysicalNetworkId(Network network) {
+    	if (network.getTrafficType() != TrafficType.Guest) {
+    		return getNonGuestNetworkPhysicalNetworkId(network);
+    	}
+    	
         Long physicalNetworkId = network.getPhysicalNetworkId();
+        NetworkOffering offering = _configMgr.getNetworkOffering(network.getNetworkOfferingId());
         if (physicalNetworkId == null) {
-            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), null);
+            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), offering.getTags());
         }
         return physicalNetworkId;
     }

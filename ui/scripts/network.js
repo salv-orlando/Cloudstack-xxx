@@ -428,6 +428,28 @@
                 }
               }
             },
+						
+						tabFilter: function(args) {		
+							var showLbTab = false;
+							$(args.context.networks[0].service).each(function(){			
+								if(this.name == "Lb") {
+								  $(this.capability).each(function() {									  
+										if(this.name == "ElasticLb") {										  
+											showLbTab = true;
+											return false; //break $.each loop
+										}										
+									});		
+									return false; //break $.each loop
+                }									
+							});		
+							
+              var hiddenTabs = [];  							
+							if(showLbTab == false)
+							  hiddenTabs.push("loadBalancer"); 							
+              return hiddenTabs;
+            },
+
+            isMaximized: true,
             tabs: {
               details: {
                 title: 'Details',
@@ -553,6 +575,228 @@
                     },
                     data: args.context.networks[0]
                   });
+                }
+              },
+
+              loadBalancer: {
+                title: 'Add load balancer',
+                custom: function(args) {
+                  var context = args.context;
+                  
+                  return $('<div>').multiEdit(
+                    {
+                      context: context,
+                      listView: $.extend(true, {}, cloudStack.sections.instances, {
+                        listView: {
+                          dataProvider: function(args) {
+                            $.ajax({
+                              url: createURL('listVirtualMachines'),
+                              data: {
+                                networkid: args.context.networks[0].id
+                              },
+                              dataType: 'json',
+                              async: true,
+                              success: function(data) {
+                                args.response.success({
+                                  data: $.grep(
+                                    data.listvirtualmachinesresponse.virtualmachine ?
+                                      data.listvirtualmachinesresponse.virtualmachine : [],
+                                    function(instance) {
+                                      return $.inArray(instance.state, [
+                                        'Destroyed'
+                                      ]) == -1;
+                                    }
+                                  )
+                                });
+                              },
+                              error: function(data) {
+                                args.response.error(parseXMLHttpResponse(data));
+                              }
+                            });
+                          }
+                        }
+                      }),
+                      multipleAdd: true,
+                      fields: {
+                        'name': { edit: true, label: 'Name' },
+                        'publicport': { edit: true, label: 'Public Port' },
+                        'privateport': { edit: true, label: 'Private Port' },
+                        'algorithm': {
+                          label: 'Algorithm',
+                          select: function(args) {
+                            args.response.success({
+                              data: [
+                                { name: 'roundrobin', description: 'Round-robin' },
+                                { name: 'leastconn', description: 'Least connections' },
+                                { name: 'source', description: 'Source' }
+                              ]
+                            });
+                          }
+                        },
+                        'sticky': {
+                          label: 'Stickiness',
+                          custom: {
+                            buttonLabel: 'Configure',
+                            action: cloudStack.lbStickyPolicy()
+                          }
+                        },
+                        'add-vm': {
+                          label: 'Add VMs',
+                          addButton: true
+                        }
+                      },
+                      add: {
+                        label: 'Add VMs',
+                        action: function(args) {
+                          var openFirewall = g_firewallRuleUiEnabled == "true" ? false : true;
+                          var data = {
+                            algorithm: args.data.algorithm,
+                            name: args.data.name,
+                            privateport: args.data.privateport,
+                            publicport: args.data.publicport
+                          };
+                          var stickyData = $.extend(true, {}, args.data.sticky);
+													
+												  var apiCmd = "createLoadBalancerRule";		
+												  //if(args.context.networks[0].type == "Shared") 
+												  apiCmd += "&domainid=" + g_domainid + "&account=" + g_account;
+												  //else //args.context.networks[0].type == "Isolated"
+												  //apiCmd += "&account=" + args.context.users[0].account;
+                          //apiCmd += '&domainid=' + args.context.users[0].domainid;
+												  
+                          $.ajax({
+                            url: createURL(apiCmd),
+                            data: $.extend(data, {
+                              openfirewall: openFirewall,                            
+                              networkid: args.context.networks[0].id
+                            }),
+                            dataType: 'json',
+                            async: true,
+                            success: function(data) {
+                              var itemData = args.itemData;
+                              var jobID = data.createloadbalancerruleresponse.jobid;
+
+                              $.ajax({
+                                url: createURL('assignToLoadBalancerRule'),
+                                data: {
+                                  id: data.createloadbalancerruleresponse.id,
+                                  virtualmachineids: $.map(itemData, function(elem) {
+                                    return elem.id;
+                                  }).join(',')
+                                },
+                                dataType: 'json',
+                                async: true,
+                                success: function(data) {
+                                  var lbCreationComplete = false;
+
+                                  args.response.success({																    
+                                    _custom: {
+                                      jobId: jobID
+                                    },
+                                    notification: {
+                                      label: 'Add load balancer rule',
+                                      poll: function(args) {
+                                        var complete = args.complete;
+                                        var error = args.error;
+                                        
+                                        pollAsyncJobResult({
+                                          _custom: args._custom,
+                                          complete: function(args) {
+                                            if (lbCreationComplete) {
+                                              return;
+                                            }
+                                            
+                                            lbCreationComplete = true;                                           
+																						alert("The load balancer rule has been added under IP " + args.data.loadbalancer.publicip );
+																						
+                                            // Create stickiness policy
+                                            if (stickyData &&
+                                                stickyData.methodname &&
+                                                stickyData.methodname != 'none') {
+                                              var stickyURLData = '';
+                                              var stickyParams;
+
+                                              switch (stickyData.methodname) {
+                                              case 'LbCookie':
+                                                stickyParams = ['name', 'mode', 'nocache', 'indirect', 'postonly', 'domain'];
+                                                break;
+                                              case 'AppCookie':
+                                                stickyParams = ['name', 'length', 'holdtime', 'request-learn', 'prefix', 'mode'];
+                                                break;
+                                              case 'SourceBased':
+                                                stickyParams = ['tablesize', 'expire'];
+                                                break;
+                                              }
+
+                                              $(stickyParams).each(function(index) {
+                                                var param = '&param[' + index + ']';
+                                                var name = this;
+                                                var value = stickyData[name];
+
+                                                if (!value) return true;
+                                                if (value == 'on') value = true;
+                                                
+                                                stickyURLData += param + '.name=' + name + param + '.value=' + value;
+                                              });
+
+                                              $.ajax({
+                                                url: createURL('createLBStickinessPolicy' + stickyURLData),
+                                                data: {
+                                                  lbruleid: args.data.loadbalancer.id,
+                                                  name: stickyData.name,
+                                                  methodname: stickyData.methodname
+                                                },
+                                                success: function(json) {
+                                                  var addStickyCheck = setInterval(function() {
+                                                    pollAsyncJobResult({
+                                                      _custom: {
+                                                        jobId: json.createLBStickinessPolicy.jobid,
+                                                      },
+                                                      complete: function(args) {
+                                                        complete();
+                                                        clearInterval(addStickyCheck);
+                                                      },
+                                                      error: function(args) {
+                                                        complete();
+                                                        cloudStack.dialog.notice({ message: args.message });
+                                                        clearInterval(addStickyCheck);
+                                                      }
+                                                    });                                                  
+                                                  }, 1000);
+                                                },
+                                                error: function(json) {
+                                                  complete();
+                                                  cloudStack.dialog.notice({ message: parseXMLHttpResponse(json) });
+                                                }
+                                              });
+                                            } else {
+                                              complete();
+                                            }
+                                          },
+                                          error: error
+                                        });
+                                      }
+                                    }
+                                  });
+                                },
+                                error: function(data) {
+                                  args.response.error(parseXMLHttpResponse(data));
+                                }
+                              });
+                            },
+                            error: function(data) {
+                              args.response.error(parseXMLHttpResponse(data));
+                            }
+                          });
+                        }
+                      },                      
+                      dataProvider: function(args) {										    
+												args.response.success({ //no LB listing in AddLoadBalancer tab
+													data: []
+												});												
+                      }
+                    }
+                  )
                 }
               }
             }
@@ -732,7 +976,9 @@
               }							
 							if(ipAddress.iselastic == true) {
 							  disabledTabs.push('vpn');
-								disabledTabs.push('ipRules');
+														
+                if(ipAddress.isstaticnat == true || ipAddress.virtualmachineid != null)								
+								  disabledTabs.push('ipRules');								
 							}			
               return disabledTabs;
             },
@@ -871,7 +1117,7 @@
                         dataType: 'json',
                         async: true,
                         success: function(data) {
-                          args.response.success();
+                          args.response.success({});											
                         },
                         error: function(data) {
                           args.response.error(parseXMLHttpResponse(data));
@@ -892,6 +1138,10 @@
                         isstaticnat: true
                       }
                     });
+
+                    setTimeout(function() {
+                      $(window).trigger('cloudStack.fullRefresh');
+                    }, 500);
                   }
                 }
               },
@@ -911,14 +1161,16 @@
                           jobId: data.disablestaticnatresponse.jobid,
                           getUpdatedItem: function() {
                             return {
-                              isstaticnat: false
+                              isstaticnat: false,
+															virtualmachinedisplayname: ""
                             };
                           },
                           getActionFilter: function() {
                             return function(args) {
                               return ['enableStaticNAT'];
                             };
-                          }
+                          },
+													fullRefreshAfterComplete: true
                         }
                       });
                     },
@@ -964,7 +1216,8 @@
                             return {
                               state: 'Released'
                             };
-                          }
+                          },
+													fullRefreshAfterComplete: true
                         }
                       });
                     },
@@ -998,14 +1251,14 @@
                     networkid: { label: 'Network ID' },
                     associatednetworkid: { label: 'Assoc. Network ID' },
                     state: { label: 'State' },
+										issourcenat: { label: 'Source NAT', converter: cloudStack.converters.toBooleanText },
+                    isstaticnat: { label: 'Static NAT', converter: cloudStack.converters.toBooleanText },
+										iselastic: { label: 'Elastic', converter: cloudStack.converters.toBooleanText },																	
+										virtualmachinedisplayname: { label: 'Virtual machine' },			
                     domain: { label: 'Domain' },
                     account: { label: 'Account' },
                     zonename: { label: 'Zone' },
-                    vlanname: { label: 'VLAN' },
-                    issourcenat: { label: 'Source NAT', converter: cloudStack.converters.toBooleanText },
-                    isstaticnat: { label: 'Static NAT', converter: cloudStack.converters.toBooleanText },
-										iselastic: { label: 'Elastic', converter: cloudStack.converters.toBooleanText },																	
-										virtualmachinedisplayname: { label: 'Virtual machine' }										
+                    vlanname: { label: 'VLAN' }                   							
                   }
                 ],
 
@@ -1412,121 +1665,10 @@
                         }
                       },
                       'sticky': {
-                        label: 'Sticky Policy',
+                        label: 'Stickiness',
                         custom: {
                           buttonLabel: 'Configure',
-                          action: function(args) {
-                            var success = args.response.success;
-                            var fields = {
-                              methodname: {
-                                label: 'Stickiness method',
-                                select: function(args) {
-                                  var $select = args.$select;
-                                  var $form = $select.closest('form');
-                                  
-                                  args.response.success({
-                                    data: [
-                                      {
-                                        id: 'none',
-                                        description: 'None'
-                                      },
-                                      {
-                                        id: 'LbCookie',
-                                        description: 'LB-based'
-                                      },
-                                      {
-                                        id: 'AppCookie',
-                                        description: 'Cookie-based'
-                                      },
-                                      {
-                                        id: 'SourceBased',
-                                        description: 'Source-based'
-                                      }
-                                    ]
-                                  }, 500);
-
-                                  $select.change(function() {
-                                    var value = $select.val();
-                                    var showFields = [];
-
-                                    switch (value) {
-                                    case 'none':
-                                      showFields = [];
-                                      break;
-                                    case 'LbCookie':
-                                      showFields = ['name', 'mode', 'nocache', 'indirect', 'postonly', 'domain'];
-                                      break;
-                                    case 'AppCookie':
-                                      showFields = ['name', 'length', 'holdtime', 'request-learn', 'prefix', 'mode'];
-                                      break;
-                                    case 'SourceBased':
-                                      showFields = ['tablesize', 'expire'];
-                                      break;
-                                    }
-
-                                    $select.closest('.form-item').siblings('.form-item').each(function() {
-                                      var $field = $(this);
-                                      var id = $field.attr('rel');
-
-                                      if ($.inArray(id, showFields) > -1) {
-                                        $field.css('display', 'inline-block');
-                                      } else {
-                                        $field.hide();
-                                      }
-                                    });
-
-                                    $select.closest(':ui-dialog').dialog('option', 'position', 'center');
-                                  });
-                                }
-                              },
-                              name: { label: 'Name', validation: { required: true }, isHidden: true },
-                              mode: { label: 'Mode', isHidden: true },
-                              length: { label: 'Length', validation: { required: true }, isHidden: true },
-                              holdtime: { label: 'Hold Time', validation: { required: true }, isHidden: true },
-                              tablesize: { label: 'Table size', isHidden: true },
-                              expire: { label: 'Expire', isHidden: true },
-                              requestlearn: { label: 'Request-Learn', isBoolean: true, isHidden: true },
-                              prefix: { label: 'Prefix', isBoolean: true, isHidden: true },
-                              nocache: { label: 'No cache', isBoolean: true, isHidden: true },
-                              indirect: { label: 'Indirect', isBoolean: true, isHidden: true },
-                              postonly: { label: 'Is post-only', isBoolean: true, isHidden: true },
-                              domain: { label: 'Domain', isBoolean: true, isHidden: true }
-                            };
-
-                            if (args.data) {
-                              var populatedFields = $.map(fields, function(field, id) {
-                                return id;
-                              });
-                              
-                              $(populatedFields).each(function() {
-                                var id = this;
-                                var field = fields[id];
-                                var dataItem = args.data[id];
-
-                                if (field.isBoolean) {
-                                  field.isChecked = dataItem ? true : false;
-                                } else {
-                                  field.defaultValue = dataItem;
-                                }
-                              });
-                            }
-
-                            cloudStack.dialog.createForm({
-                              form: {
-                                title: 'Configure Sticky Policy',
-                                desc: 'Please complete the following fields',
-                                fields: fields
-                              },
-                              after: function(args) {
-                                var data = cloudStack.serializeForm(args.$form);
-                                success({
-                                  data: $.extend(data, {
-                                    _buttonLabel: data.methodname.toUpperCase()
-                                  })
-                                });
-                              }
-                            });
-                          }
+                          action: cloudStack.lbStickyPolicy()
                         }
                       },
                       'add-vm': {
@@ -1547,9 +1689,9 @@
                         var stickyData = $.extend(true, {}, args.data.sticky);
 																			
 												var apiCmd = "createLoadBalancerRule";		
-												if(args.context.networks[0].type == "Shared") 
-												  apiCmd += "&domainid=" + g_domainid + "&account=" + g_account;
-												else //args.context.networks[0].type == "Isolated"
+												//if(args.context.networks[0].type == "Shared") 
+												  //apiCmd += "&domainid=" + g_domainid + "&account=" + g_account;
+												//else //args.context.networks[0].type == "Isolated"
 												  apiCmd += "&publicipid=" + args.context.ipAddresses[0].id;
 												
                         $.ajax({
@@ -1575,7 +1717,9 @@
                               dataType: 'json',
                               async: true,
                               success: function(data) {
-                                args.response.success({
+                                var lbCreationComplete = false;
+                                
+                                args.response.success({																  
                                   _custom: {
                                     jobId: jobID
                                   },
@@ -1587,11 +1731,17 @@
                                       
                                       pollAsyncJobResult({
                                         _custom: args._custom,
-                                        complete: function(args) {                                          
+                                        complete: function(args) {
+                                          if (lbCreationComplete) {
+                                            return;
+                                          }
+                                          
+                                          lbCreationComplete = true;
+                                          
                                           // Create stickiness policy
                                           if (stickyData &&
                                               stickyData.methodname &&
-                                              stickyData.methodname != 'none') {
+                                              stickyData.methodname != 'None') {
                                             var stickyURLData = '';
                                             var stickyParams;
 
@@ -1702,9 +1852,9 @@
                     },
                     dataProvider: function(args) {
 										  var apiCmd = "listLoadBalancerRules";												  									
-											if(args.context.networks[0].type == "Shared") 
-												apiCmd += "&domainid=" + g_domainid + "&account=" + g_account;
-											else //args.context.networks[0].type == "Isolated"
+											//if(args.context.networks[0].type == "Shared") 
+											//	apiCmd += "&domainid=" + g_domainid + "&account=" + g_account;
+											//else //args.context.networks[0].type == "Isolated"
 												apiCmd += "&publicipid=" + args.context.ipAddresses[0].id;
 																				
                       $.ajax({
@@ -1717,33 +1867,66 @@
                           var loadVMCurrent = 0;
 
                           $(loadBalancerData).each(function() {
+                            loadVMCurrent++;
                             var item = this;
+                            var stickyData = {};
+                            var lbInstances = [];
 
+                            // Get sticky data
+                            $.ajax({
+                              url: createURL('listLBStickinessPolicies'),
+                              async: false,
+                              data: {
+                                lbruleid: item.id
+                              },
+                              success: function(json) {
+                                var stickyPolicy = json.listlbstickinesspoliciesresponse.stickinesspolicies ?
+                                  json.listlbstickinesspoliciesresponse.stickinesspolicies[0].stickinesspolicy : null
+
+                                if (stickyPolicy && stickyPolicy.length) {
+                                  stickyPolicy = stickyPolicy[0];
+
+                                  if (!stickyPolicy.methodname) stickyPolicy.methodname = 'None';
+
+                                  stickyData = {
+                                    _buttonLabel: stickyPolicy.methodname,
+                                    methodname: stickyPolicy.methodname,
+                                    id: stickyPolicy.id
+                                  };
+                                  $.extend(stickyData, stickyPolicy.params);
+                                } else {
+                                  stickyData = {};
+                                }
+                              },
+                              error: function(json) {
+                                cloudStack.dialog.notice({ message: parseXMLHttpResponse(json) });
+                              }
+                            });
+                            
                             // Get instances
                             $.ajax({
                               url: createURL('listLoadBalancerRuleInstances'),
                               dataType: 'json',
-                              async: true,
+                              async: false,
                               data: {
                                 id: item.id
                               },
                               success: function(data) {
-                                loadVMCurrent++;
-                                $.extend(item, {
-                                  _itemData: data
-                                    .listloadbalancerruleinstancesresponse.loadbalancerruleinstance
-                                });
-
-                                if (loadVMCurrent == loadVMTotal) {
-                                  args.response.success({
-                                    data: loadBalancerData
-                                  });
-                                }
+                                lbInstances = data.listloadbalancerruleinstancesresponse.loadbalancerruleinstance;
                               },
                               error: function(data) {
                                 args.response.error(parseXMLHttpResponse(data));
                               }
                             });
+
+                            $.extend(item, {
+                              _itemData: lbInstances,
+                              sticky: stickyData
+                            });
+                          });
+
+                          args.response.success({
+                            data: loadBalancerData
                           });
                         }
                       });
