@@ -1,4 +1,4 @@
-(function($, cloudStack, testData) {
+(function($, cloudStack) {
   // Admin dashboard
   cloudStack.sections.dashboard = {
     title: 'Dashboard',
@@ -81,9 +81,6 @@
             if (data.zones) {
               $.ajax({
                 url: createURL('listCapacity'),
-                data: {
-                  zoneid: data.zones[0].id // Temporary hack to keep dashboard working
-                },
                 success: function(json) {
                   var capacities = json.listcapacityresponse.capacity;
 
@@ -268,4 +265,4 @@
       }
     }
   };
-})(jQuery, cloudStack, testData);
+})(jQuery, cloudStack);

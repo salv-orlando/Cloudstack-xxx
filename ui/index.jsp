@@ -535,11 +535,11 @@
             </div>
           </div>
 
-          <!-- Step 3.1b: Setup Physical Network (basic zone) -->
+          <!-- Step 3.1b: Add Netscaler device -->
           <div class="setup-physical-network-basic"
-               zone-wizard-step-id="addBasicPhysicalNetwork"
+               zone-wizard-step-id="addNetscalerDevice"
                zone-wizard-form="basicPhysicalNetwork"
-               zone-wizard-prefilter="addBasicPhysicalNetwork">
+               zone-wizard-prefilter="addNetscalerDevice">
             <ul class="subnav">
               <li class="physical-network active">Netscaler</li>
               <li class="public-network">Public traffic</li>
@@ -627,7 +627,7 @@
 
           <!-- Step 4.2: Add host -->
           <div class="add-cluster" zone-wizard-form="host"
-               zone-wizard-step-id="addHost">
+               zone-wizard-step-id="addHost" zone-wizard-prefilter="addHost">
             <ul class="subnav">
               <li class="cluster">Cluster</li>
               <li class="host active">Host</li>
@@ -1535,8 +1535,6 @@
     <script src="scripts/ui/widgets/detailView.js" type="text/javascript"></script>
     <script src="scripts/ui/widgets/treeView.js" type="text/javascript"></script>
     <script src="scripts/ui/widgets/notifications.js" type="text/javascript"></script>
-
-    <script src="scripts-test/test-data.js" type="text/javascript"></script>
 
     <!-- Common libraries -->
     <script src="lib/date.js" type="text/javascript"></script>

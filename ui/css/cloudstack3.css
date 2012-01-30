@@ -777,6 +777,10 @@ div.notification-box .container ul li {
   cursor: pointer;
 }
 
+div.notification-box .container ul li.error {
+  background: url(../images/icons.png) no-repeat 10px -179px;
+}
+
 div.notification-box .container ul li span {
   float: left;
   /*+placement:shift 48px 16px;*/
@@ -1094,11 +1098,11 @@ div.list-view td.state.off span {
 .ui-tabs ul.ui-tabs-nav {
   margin-top: 42px;
   display: block;
-  width: 95%;
+  width: 100%;
   height: 41px;
+  float: left;
   border: none;
   overflow: hidden;
-  display: inline-block;
   z-index: 2;
   /*+placement:shift 0px 2px;*/
   position: relative;
@@ -1150,14 +1154,14 @@ div.list-view td.state.off span {
   background: #DEE3E5;
 }
 
+.ui-tabs li {
+  float: left;
+}
+
 .ui-tabs ul li.ui-state-default a {
   border-right: 1px solid #97AFC5;
   border-top: 2px solid #D6DCDE;
   background: url(../images/bg-details-tab-gradient.png);
-  /*+placement:shift;*/
-  position: relative;
-  left: 0;
-  top: 0;
   padding-bottom: 11px;
 }
 
@@ -3364,7 +3368,8 @@ Dialogs*/
   float: left;
   margin: 0 17px 0 0;
   height: 313px;
-  overflow: auto;
+  overflow: hidden;
+  position: relative;
 }
 
 .dashboard.admin .dashboard-container.sub.alerts.last {
@@ -3375,6 +3380,7 @@ Dialogs*/
   width: 356px;
   height: 274px;
   overflow: auto;
+  position: relative;
   margin: 0 0 0 16px;
 }
 
@@ -5948,7 +5954,7 @@ label.error {
 
 .tree-view ul li .name {
   float: left;
-  margin: 0 0 13px 11px;
+  margin: 1px 0px 13px 17px;
   padding: 6px 9px 6px 4px;
   cursor: pointer;
 }
@@ -6196,6 +6202,11 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 .multi-edit .data .data-body .data-item {
   margin-bottom: 14px;
   border: 1px solid #CDCCCC;
+  position: relative;
+}
+
+.multi-edit .data .data-body .data-item .loading-overlay {
+  background-position: 50% 50%;
 }
 
 .multi-edit .data .data-body .data-item.loading {
@@ -6223,8 +6234,6 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 .multi-edit .data .data-body .data-item tr {
   background: #EFEFEF;
   border: none;
-  display: block;
-  width: 115%;
 }
 
 .multi-edit .data .data-body .data-item table tbody tr td {
@@ -6232,10 +6241,8 @@ div.panel.ui-dialog div.list-view div.fixed-header {
   border-left: none;
   border-right: 1px solid #CFC9C9;
   height: 15px;
-  float: left;
   overflow: hidden;
   padding-right: 0;
-  padding-bottom: 4px;
 }
 
 .multi-edit .data .data-body .data-item table tbody tr td.blank {
@@ -6290,7 +6297,7 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 }
 
 .multi-edit .data .data-body .data-item tr td .custom-action {
-  margin: -6px 0 0 -1px;
+  margin: -2px 0 0 0px;
 }
 
 .multi-edit .data .data-body .data-item tr td.add-vm:hover {
@@ -6299,10 +6306,10 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 }
 
 .multi-edit .data .data-body .data-item tr td.multi-actions .icon {
-  /*+placement:shift -3px -8px;*/
+  /*+placement:shift -3px -2px;*/
   position: relative;
   left: -3px;
-  top: -8px;
+  top: -2px;
 }
 
 .multi-edit .data .data-body .data-item .expandable-listing {
@@ -6322,7 +6329,6 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 .multi-edit .data .data-body .data-item .expandable-listing tr td {
   background: #DDE0E2;
   border: none;
-  width: 100%;
   margin: 0;
   text-indent: 37px;
 }
@@ -6912,8 +6918,8 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 }
 
 .system-dashboard .status_box li {
-  width: 180px;
   height: 178px;
+  width: 180px;
   padding: 0;
   background: url(../images/bg-gradients.png) repeat-x 0px -1003px;
   margin: 0 0 0 8px;
@@ -7517,8 +7523,9 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 }
 
 .project-dashboard-view .users .system-dashboard {
-  width: 510px;
+  width: 509px;
   height: 100%;
+  clear: both;
 }
 
 .project-dashboard-view .users .system-dashboard ul {
@@ -7526,10 +7533,10 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 }
 
 .project-dashboard-view .users .system-dashboard li {
-  width: 91px;
+  width: 86px;
   height: 138px;
   margin-bottom: 24px;
-  margin-left: 9px;
+  margin-left: 6px;
 }
 
 .project-dashboard-view .users .system-dashboard li .icon {
@@ -7573,12 +7580,12 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 
 .info-boxes .info-box.events {
   margin-top: 4px;
-  min-height: 100px;
+  height: 323px;
   width: 228px;
 }
 
 .info-boxes .info-box.events ul {
-  max-height: 205px;
+  max-height: 295px;
   overflow: auto;
   overflow-x: hidden;
 }
@@ -7684,16 +7691,23 @@ div.panel.ui-dialog div.list-view div.fixed-header {
 .info-boxes .info-box ul li .date {
   font-size: 13px;
   text-align: center;
-  margin: 13px 0 0;
+  margin: 0;
+}
+
+.info-boxes .info-box ul li .date span {
+  /*+placement:shift 0px 11px;*/
+  position: relative;
+  left: 0px;
+  top: 11px;
 }
 
 .info-boxes .info-box ul li .desc {
   color: #606060;
   font-size: 12px;
-  /*+placement:shift 10px 11px;*/
+  /*+placement:shift 5px 8px;*/
   position: relative;
-  left: 10px;
-  top: 11px;
+  left: 5px;
+  top: 8px;
 }
 
 .info-boxes .info-box ul li .total span {

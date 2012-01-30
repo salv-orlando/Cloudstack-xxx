@@ -43,7 +43,6 @@ import org.apache.log4j.Logger;
 import com.cloud.acl.SecurityChecker;
 import com.cloud.alert.AlertManager;
 import com.cloud.api.ApiConstants.LDAPParams;
-import com.cloud.api.commands.CreateCfgCmd;
 import com.cloud.api.commands.CreateDiskOfferingCmd;
 import com.cloud.api.commands.CreateNetworkOfferingCmd;
 import com.cloud.api.commands.CreateServiceOfferingCmd;
@@ -112,10 +111,13 @@ import com.cloud.network.NetworkManager;
 import com.cloud.network.NetworkVO;
 import com.cloud.network.Networks.BroadcastDomainType;
 import com.cloud.network.Networks.TrafficType;
+import com.cloud.network.PhysicalNetwork;
 import com.cloud.network.PhysicalNetworkVO;
 import com.cloud.network.dao.IPAddressDao;
 import com.cloud.network.dao.NetworkDao;
 import com.cloud.network.dao.PhysicalNetworkDao;
+import com.cloud.network.dao.PhysicalNetworkTrafficTypeDao;
+import com.cloud.network.dao.PhysicalNetworkTrafficTypeVO;
 import com.cloud.offering.DiskOffering;
 import com.cloud.offering.NetworkOffering;
 import com.cloud.offering.NetworkOffering.Availability;
@@ -236,6 +238,8 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
     PhysicalNetworkDao _physicalNetworkDao;
     @Inject
     SwiftManager _swiftMgr;
+    @Inject
+    PhysicalNetworkTrafficTypeDao _trafficTypeDao;
     
     // FIXME - why don't we have interface for DataCenterLinkLocalIpAddressDao?
     protected static final DataCenterLinkLocalIpAddressDaoImpl _LinkLocalIpAllocDao = ComponentLocator.inject(DataCenterLinkLocalIpAddressDaoImpl.class);
@@ -1456,13 +1460,22 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
             if(allocationState == Grouping.AllocationState.Enabled){
                 //check if zone has necessary trafficTypes before enabling
                 try{
+                	PhysicalNetwork mgmtPhyNetwork;
                     if(NetworkType.Advanced == zone.getNetworkType()){
                         //zone should have a physical network with public and management traffiType
                         _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Public);
-                        _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Management);
+                        mgmtPhyNetwork = _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Management);
                     }else{
                         //zone should have a physical network with management traffiType
-                        _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Management);
+                    	mgmtPhyNetwork = _networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Management);
+                    }
+                    
+                    try {
+                    	_networkMgr.getDefaultPhysicalNetworkByZoneAndTrafficType(zoneId, TrafficType.Storage);
+                    } catch (InvalidParameterValueException noStorage) {
+                    	PhysicalNetworkTrafficTypeVO mgmtTraffic = _trafficTypeDao.findBy(mgmtPhyNetwork.getId(), TrafficType.Management);
+                    	_networkMgr.addTrafficTypeToPhysicalNetwork(mgmtPhyNetwork.getId(), TrafficType.Storage.toString(), mgmtTraffic.getXenNetworkLabel(), mgmtTraffic.getKvmNetworkLabel(), mgmtTraffic.getVmwareNetworkLabel(), mgmtTraffic.getSimulatorNetworkLabel(), mgmtTraffic.getVlan());
+                    	s_logger.info("No storage traffic type was specified by admin, create default storage traffic on physical network " + mgmtPhyNetwork.getId() + " with same configure of management traffic type");
                     }
                 }catch(InvalidParameterValueException ex){
                     throw new InvalidParameterValueException("Cannot enable this Zone since: "+ ex.getMessage());
@@ -2815,28 +2828,6 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
             throw new InvalidParameterValueException("The linkLocalIp.nums: " + nums + "may be wrong, should be 1~16");
         }
         return ipRanges;
-    }
-
-    @Override
-    public Configuration addConfig(CreateCfgCmd cmd) {
-        String category = cmd.getCategory();
-        String instance = cmd.getInstance();
-        String component = cmd.getComponent();
-        String name = cmd.getConfigPropName();
-        String value = cmd.getValue();
-        String description = cmd.getDescription();
-        try {
-        	if("Hidden".equals(category)){
-        		value = DBEncryptionUtil.encrypt(value);
-        	}
-            ConfigurationVO entity = new ConfigurationVO(category, instance, component, name, value, description);
-            _configDao.persist(entity);
-            s_logger.info("Successfully added configuration value into db: category:" + category + " instance:" + instance + " component:" + component + " name:" + name + " value:" + value);
-            return _configDao.findByName(name);
-        } catch (Exception ex) {
-            s_logger.error("Unable to add the new config entry:", ex);
-            throw new CloudRuntimeException("Unable to add configuration parameter " + name);
-        }
     }
 
     @Override

@@ -2427,8 +2427,10 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
         long id = _vmDao.getNextInSequence(Long.class, "id");
 
         String instanceName = VirtualMachineName.getVmName(id, owner.getId(), _instance);
+        
+        String uuidName = UUID.randomUUID().toString();
         if (hostName == null) {
-            hostName = instanceName;
+            hostName = uuidName;
         } else {
             // verify hostName (hostname doesn't have to be unique)
             if (!NetUtils.verifyDomainNameLabel(hostName, true)) {
@@ -2447,7 +2449,8 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
         txn.start();
         UserVmVO vm = new UserVmVO(id, instanceName, displayName, template.getId(), hypervisorType, template.getGuestOSId(), offering.getOfferHA(), offering.getLimitCpuUse(), owner.getDomainId(), owner.getId(),
                 offering.getId(), userData, hostName);
-
+        vm.setUuid(uuidName);
+        
         if (sshPublicKey != null) {
             vm.setDetail("SSH.PublicKey", sshPublicKey);
         }
@@ -2780,6 +2783,16 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
 
     @Override
     public void finalizeStop(VirtualMachineProfile<UserVmVO> profile, StopAnswer answer) {
+    	//release elastic IP here
+    	IPAddressVO ip = _ipAddressDao.findByAssociatedVmId(profile.getId());
+    	if (ip != null && ip.getElastic()) {
+    		UserContext ctx = UserContext.current();
+    		try {
+            	_rulesMgr.disableStaticNat(ip.getId(), ctx.getCaller(), ctx.getCallerUserId(), true);
+    		} catch (Exception ex) {
+    			s_logger.warn("Failed to disable static nat and release elastic ip " + ip + " as a part of vm " + profile.getVirtualMachine() + " stop due to exception ", ex);
+    		}
+    	}
     }
 
     public String generateRandomPassword() {

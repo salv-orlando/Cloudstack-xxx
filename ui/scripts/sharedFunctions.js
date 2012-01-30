@@ -8,7 +8,6 @@ var g_enableLogging = false;
 var g_timezoneoffset = null;
 var g_timezone = null;
 var g_supportELB = null;
-var g_firewallRuleUiEnabled = null; //true or false
 var g_directAttachSecurityGroupsEnabled = "false";
 var g_userPublicTemplateEnabled = "true";
 
@@ -63,7 +62,11 @@ var pollAsyncJobResult = function(args) {
 						setTimeout(function() {
 							$(window).trigger('cloudStack.fullRefresh');
 						}, 500);
-					}					
+					}
+
+          if (args._custom.onComplete) {
+            args._custom.onComplete(json);
+          }
         }
         else if (result.jobstatus == 2) { // Failed          
           var msg = (result.jobresult.errortext == null)? "": result.jobresult.errortext;

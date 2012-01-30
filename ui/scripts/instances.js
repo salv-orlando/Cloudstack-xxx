@@ -1,4 +1,4 @@
-(function($, cloudStack, testData) {
+(function($, cloudStack) {
 
   var zoneObjs, hypervisorObjs, featuredTemplateObjs, communityTemplateObjs, myTemplateObjs, isoObjs, serviceOfferingObjs, diskOfferingObjs, networkOfferingObjs;
   var selectedZoneObj, selectedTemplateObj, selectedHypervisor, selectedDiskOfferingObj; 
@@ -288,10 +288,16 @@
 
                   else if(step5ContainerType == 'select-security-group') {
                     var securityGroupArray = [];
+                    var data = {
+                      domainid: g_domainid,
+                      account: g_account
+                    };
+                    
                     $.ajax({
-                      url: createURL("listSecurityGroups"+"&domainid="+g_domainid+"&account="+g_account),
+                      url: createURL("listSecurityGroups"),
                       dataType: "json",
                       async: false,
+                      data: cloudStack.context.projects ? {} : data,
                       success: function(json) {
                         var items = json.listsecuritygroupsresponse.securitygroup;
                         if (items != null && items.length > 0) {
@@ -1639,7 +1645,6 @@
               networkkbsread: { label: 'Network Read' },
               networkkbswrite: { label: 'Network Write' }
             },
-            //dataProvider: testData.dataProvider.detailView('instances')
             dataProvider: function(args) {
               var jsonObj = args.context.instances[0];                          
               args.response.success({
@@ -1717,4 +1722,4 @@
     return allowedActions;
   }
 
-})(jQuery, cloudStack, testData);
+})(jQuery, cloudStack);

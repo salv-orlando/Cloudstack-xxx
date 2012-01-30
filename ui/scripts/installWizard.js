@@ -1,4 +1,4 @@
-(function($, cloudStack, testData) {
+(function($, cloudStack) {
   cloudStack.installWizard = {
     // Check if install wizard should be invoked
     check: function(args) {
@@ -268,6 +268,7 @@
               cloudStack.zoneWizard.enableZoneAction({
                 data: args.data,
                 formData: args.data,
+                launchData: args.data,
                 response: {
                   success: function(args) {
                     pollSystemVMs();
@@ -307,4 +308,4 @@
       }));
     }
   };
-}(jQuery, cloudStack, testData));
+}(jQuery, cloudStack));

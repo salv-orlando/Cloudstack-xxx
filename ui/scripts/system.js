@@ -1,4 +1,4 @@
-(function($, cloudStack, testData) {
+(function($, cloudStack) {
 
   var zoneObjs, podObjs, clusterObjs, domainObjs, networkOfferingObjs;
   var selectedClusterObj, selectedZoneObj, selectedPublicNetworkObj, selectedManagementNetworkObj, selectedPhysicalNetworkObj, selectedGuestNetworkObj;
@@ -79,9 +79,6 @@
             if (data.zoneCount) {
               $.ajax({
                 url: createURL('listCapacity'),
-                data: {
-                  zoneid: data.zones[0].id // Temporary hack to keep dashboard working
-                },
                 success: function(json) {
                   var capacities = json.listcapacityresponse.capacity;
 
@@ -740,28 +737,9 @@
                         }
                       },
 
-                      createForm: {
-                        title: 'Create network',
-                        preFilter: function(args) {
-                          if(selectedZoneObj.networktype == "Basic") {    
-                            args.$form.find('.form-item[rel=vlanId]').hide();
-                            args.$form.find('.form-item[rel=scope]').hide();
-                            args.$form.find('.form-item[rel=domainId]').hide();
-                            args.$form.find('.form-item[rel=account]').hide();
-                            args.$form.find('.form-item[rel=networkdomain]').hide();
-
-                            args.$form.find('.form-item[rel=podId]').css('display', 'inline-block');
-                          }
-                          else {  //"Advanced"                           
-                            args.$form.find('.form-item[rel=vlanId]').css('display', 'inline-block');
-                            args.$form.find('.form-item[rel=scope]').css('display', 'inline-block');
-                            //args.$form.find('.form-item[rel=domainId]').css('display', 'inline-block'); //depends on scope field
-                            //args.$form.find('.form-item[rel=account]').css('display', 'inline-block');  //depends on scope field
-                            args.$form.find('.form-item[rel=networkdomain]').css('display', 'inline-block');
-
-                            args.$form.find('.form-item[rel=podId]').hide();
-                          }
-                        },
+                      createForm: {  
+                        title: 'Create network', //create guest network (only shown in advanced zone)
+                        
                         fields: {
                           name: {
                             label: 'Name',
@@ -778,15 +756,11 @@
                           scope: {
                             label: 'Scope',
                             select: function(args) {
-                              var array1 = [];
-                              if(selectedZoneObj.securitygroupsenabled) {
-                                array1.push({id: 'account-specific', description: 'Account'});
-                              }
-                              else {
-                                array1.push({id: 'zone-wide', description: 'All'});
-                                array1.push({id: 'domain-specific', description: 'Domain'});
-                                array1.push({id: 'account-specific', description: 'Account'});
-                              }
+                              var array1 = [];															
+															array1.push({id: 'zone-wide', description: 'All'});
+															array1.push({id: 'domain-specific', description: 'Domain'});
+															array1.push({id: 'account-specific', description: 'Account'});
+														
                               args.response.success({data: array1});
 
                               args.$select.change(function() {
@@ -859,27 +833,25 @@
                             select: function(args) {
                               var array1 = [];
                               var apiCmd = "listNetworkOfferings&state=Enabled";
-                              if(selectedZoneObj.networktype == "Advanced") {  //Advanced zone
-                                if(args.scope == "zone-wide" || args.scope == "domain-specific")
-                                  apiCmd += "&guestiptype=Shared";
-                                else  //args.scope == "account-specific"
-                                  apiCmd += "&guestiptype=Isolated&sourcenatsupported=false";
-                              }
-                              else {  //Basic zone
-                                apiCmd += "&guestiptype=Shared";
-                              }
+															
+                              //this tab (Network tab in guest network) only shows when it's under an Advanced zone
+															if(args.scope == "zone-wide" || args.scope == "domain-specific") {
+																apiCmd += "&guestiptype=Shared";
+															}
+                              //else, args.scope == "account-specific", displays all network offerings    
+                              
                               $.ajax({
                                 url: createURL(apiCmd),
                                 dataType: "json",
                                 async: false,
-                                success: function(json) {
-                                  var networkOfferings = json.listnetworkofferingsresponse.networkoffering;
-                                  if (networkOfferings != null && networkOfferings.length > 0) {
-                                    //for (var i = 0; i < networkOfferings.length; i++) {
-                                    for (var i = (networkOfferings.length-1); i >= 0; i--) {
+                                success: function(json) {																  
+                                  networkOfferingObjs = json.listnetworkofferingsresponse.networkoffering;
+                                  if (networkOfferingObjs != null && networkOfferingObjs.length > 0) {
+                                    //for (var i = 0; i < networkOfferingObjs.length; i++) {
+                                    for (var i = (networkOfferingObjs.length-1); i >= 0; i--) {
                                       if(nspMap["securityGroups"].state == "Disabled"){ //if security groups provider is disabled, exclude network offerings that has "SecurityGroupProvider" in service
                                         var includingSGP = false;
-                                        var serviceObjArray = networkOfferings[i].service;
+                                        var serviceObjArray = networkOfferingObjs[i].service;
                                         for(var k = 0; k < serviceObjArray.length; k++) {
                                           if(serviceObjArray[k].name == "SecurityGroup") {
                                             includingSGP = true;
@@ -889,79 +861,41 @@
                                         if(includingSGP == true)
                                           continue; //skip to next network offering
                                       }
-                                      array1.push({id: networkOfferings[i].id, description: networkOfferings[i].displaytext});
+                                      array1.push({id: networkOfferingObjs[i].id, description: networkOfferingObjs[i].displaytext});
                                     }
                                   }
                                 }
                               });
+															
                               args.response.success({data: array1});
+                              												
+															
+															args.$select.change(function(){															 
+															  var $form = $(this).closest("form");																                                
+																var selectedNetworkOfferingId = $(this).val();													
+																$(networkOfferingObjs).each(function(){																 
+																  if(this.id == selectedNetworkOfferingId) {	
+																		if(this.guestiptype == "Isolated") {
+																			if(this.specifyipranges == false) {
+																				$form.find('.form-item[rel=guestStartIp]').hide();
+																				$form.find('.form-item[rel=guestEndIp]').hide();
+																			}
+																			else {
+																				$form.find('.form-item[rel=guestStartIp]').css('display', 'inline-block');
+																				$form.find('.form-item[rel=guestEndIp]').css('display', 'inline-block');
+																			}
+																		}
+																		else {  //this.guestiptype == "Shared"
+																			$form.find('.form-item[rel=guestStartIp]').css('display', 'inline-block');
+																			$form.find('.form-item[rel=guestEndIp]').css('display', 'inline-block');
+																		}													
+																		return false; //break each loop
+																	}
+																});                                													
+															});															
                             }
                           },
 
-                          podId: {
-                            label: 'Pod',
-                            validation: { required: true },
-                            select: function(args) {
-                              var items = [];
-                              if(selectedZoneObj.networktype == "Basic") {
-                                $.ajax({
-                                  url: createURL("listPods&zoneid=" + selectedZoneObj.id),
-                                  dataType: "json",
-                                  async: false,
-                                  success: function(json) {
-                                    var podObjs = json.listpodsresponse.pod;
-                                    $(podObjs).each(function(){
-                                      items.push({id: this.id, description: this.name});
-                                    });
-                                  }
-                                });
-                                items.push({id: 0, description: "(create new pod)"});
-                              }
-                              args.response.success({data: items});
-
-                              args.$select.change(function() {
-                                var $form = $(this).closest('form');
-                                if($(this).val() == "0") {
-                                  $form.find('.form-item[rel=podname]').css('display', 'inline-block');
-                                  $form.find('.form-item[rel=reservedSystemGateway]').css('display', 'inline-block');
-                                  $form.find('.form-item[rel=reservedSystemNetmask]').css('display', 'inline-block');
-                                  $form.find('.form-item[rel=reservedSystemStartIp]').css('display', 'inline-block');
-                                  $form.find('.form-item[rel=reservedSystemEndIp]').css('display', 'inline-block');
-                                }
-                                else {
-                                  $form.find('.form-item[rel=podname]').hide();
-                                  $form.find('.form-item[rel=reservedSystemGateway]').hide();
-                                  $form.find('.form-item[rel=reservedSystemNetmask]').hide();
-                                  $form.find('.form-item[rel=reservedSystemStartIp]').hide();
-                                  $form.find('.form-item[rel=reservedSystemEndIp]').hide();
-                                }
-                              });
-                            }
-                          },
-
-                          //create new pod fields start here
-                          podname: {
-                            label: 'Pod name',
-                            validation: { required: true }
-                          },
-                          reservedSystemGateway: {
-                            label: 'Reserved system gateway',
-                            validation: { required: true }
-                          },
-                          reservedSystemNetmask: {
-                            label: 'Reserved system netmask',
-                            validation: { required: true }
-                          },
-                          reservedSystemStartIp: {
-                            label: 'Start Reserved system IP',
-                            validation: { required: true }
-                          },
-                          reservedSystemEndIp: {
-                            label: 'End Reserved system IP',
-                            validation: { required: false }
-                          },
-                          //create new pod fields ends here
-                          
                           guestGateway: { label: 'Guest gateway' },
                           guestNetmask: { label: 'Guest netmask' },
                           guestStartIp: { label: 'Guest start IP' },
@@ -1444,8 +1378,7 @@
             vlan: { label: 'VLAN Range' }
           }
         },
-        dataProvider: function(args) {
-          selectedZoneObj = args.context.zones[0];
+        dataProvider: function(args) {          
           cloudStack.sections.system.naas.networkProviders.statusCheck({
             context: args.context
           });
@@ -3132,6 +3065,7 @@
                         id: args.context.physicalResources[0].id
                       },
                       success: function(json) {
+											  selectedZoneObj = json.listzonesresponse.zone[0];
                         args.response.success({ data: json.listzonesresponse.zone[0] });
                       }
                     });
@@ -6293,7 +6227,7 @@
                   },
                   {
                     id: { label: 'ID' },
-                    created: { label: 'Created', converter: cloudStack.converters.toLocalDate },
+                    created: { label: 'Created', converter: cloudStack.converters.toLocalDate }
                   }
                 ],
                 
@@ -7282,4 +7216,4 @@
     }
   };
 
-})($, cloudStack, testData);
+})($, cloudStack);

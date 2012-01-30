@@ -17,6 +17,8 @@
  */
 package com.cloud.storage.secondary;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -225,6 +227,7 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
     private String _instance;
     private boolean _useLocalStorage;
     private boolean _useSSlCopy;
+    private String _httpProxy;
     private String _allowedInternalSites;
     protected long                                _nodeId                              = ManagementServerNode.getManagementServerId();
 
@@ -833,6 +836,31 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
             _loadScanner = new SystemVmLoadScanner<Long>(this);
             _loadScanner.initScan(STARTUP_DELAY, _capacityScanInterval);
         }
+        
+        _httpProxy = configs.get(Config.SecStorageProxy.key());
+        if (_httpProxy != null) {
+        	boolean valid = true;
+        	String errMsg = null;
+        	try {
+				URI uri = new URI(_httpProxy);
+				if (!"http".equalsIgnoreCase(uri.getScheme())) {
+					errMsg = "Only support http proxy";
+					valid = false;
+				} else if (uri.getHost() == null) {
+					errMsg = "host can not be null";
+					valid = false;
+				} else if (uri.getPort() == -1) {
+					_httpProxy = _httpProxy + ":3128";
+				}
+			} catch (URISyntaxException e) {
+				errMsg = e.toString();
+			} finally {
+				if (!valid) {
+					s_logger.debug("ssvm http proxy " + _httpProxy + " is invalid: " + errMsg);
+					throw new ConfigurationException("ssvm http proxy " + _httpProxy +  "is invalid: " + errMsg);
+				}
+			}
+        }
         if (s_logger.isInfoEnabled()) {
             s_logger.info("Secondary storage vm Manager is configured.");
         }
@@ -1109,7 +1137,7 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
             controlNic = managementNic;
         }
 
-        CheckSshCommand check = new CheckSshCommand(profile.getInstanceName(), controlNic.getIp4Address(), 3922, 5, 20);
+        CheckSshCommand check = new CheckSshCommand(profile.getInstanceName(), controlNic.getIp4Address(), 3922);
         cmds.addCommand("checkSsh", check);
 
         return true;

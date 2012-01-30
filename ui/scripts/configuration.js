@@ -1,4 +1,4 @@
-(function(cloudStack, testData, $) {
+(function(cloudStack, $) {
   cloudStack.sections.configuration = {
     title: 'Configuration',
     id: 'configuration',
@@ -1058,7 +1058,7 @@
 										} 
                     else if ((key == 'service.Lb.elasticLbCheckbox') && ("Lb" in serviceProviderMap)) {	//if checkbox is unchecked, it won't be included in formData in the first place. i.e. it won't fall into this section								
 											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].service'] = 'lb';
-											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'ElasticLb'; //??? waiting for Alena's response
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'ElasticLb'; 
 											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilityvalue'] = true; //because this checkbox's value == "on"
 											serviceCapabilityIndex++;
 										} 										
@@ -1070,7 +1070,7 @@
 										} 
                     else if ((key == 'service.StaticNat.elasticIpCheckbox') && ("StaticNat" in serviceProviderMap)) {	//if checkbox is unchecked, it won't be included in formData in the first place. i.e. it won't fall into this section								
 											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].service'] = 'StaticNat';
-											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'ElasticIp'; //??? waiting for Alena's response
+											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilitytype'] = 'ElasticIp'; 
 											inputData['servicecapabilitylist[' + serviceCapabilityIndex + '].capabilityvalue'] = true; //because this checkbox's value == "on"
 											serviceCapabilityIndex++;
 										} 										
@@ -1090,7 +1090,13 @@
                 } else {
                   inputData['specifyVlan'] = false;
                 }
-
+								
+								if (inputData['specifyIpRanges'] == 'on') {
+                  inputData['specifyIpRanges'] = true;
+                } else {
+                  inputData['specifyIpRanges'] = false;
+                }
+																
 								if (inputData['conservemode'] == 'on') {
                   inputData['conservemode'] = true;
                 } else {
@@ -1202,7 +1208,9 @@
                   },
 
                   specifyVlan: { label: 'Specify VLAN', isBoolean: true },
-
+								
+									specifyIpRanges: { label: 'Specify IP ranges', isBoolean: true },
+								
                   supportedServices: {
                     label: 'Supported Services',
 
@@ -1257,7 +1265,7 @@
                     label: "Redundant router capability",
                     isHidden: true,
                     dependsOn: 'service.SourceNat.isEnabled',
-                    isBoolean: true,
+                    isBoolean: true
                   },
 
                   "service.SourceNat.sourceNatTypeDropdown": {
@@ -1277,7 +1285,7 @@
                     label: "Elastic LB",
                     isHidden: true,
                     dependsOn: 'service.Lb.isEnabled',
-                    isBoolean: true,
+                    isBoolean: true
                   },
                   "service.Lb.lbIsolationDropdown": {
                     label: 'LB isolation',
@@ -1296,7 +1304,7 @@
 										label: "Elastic IP",
 										isHidden: true,
 										dependsOn: 'service.StaticNat.isEnabled',
-										isBoolean: true,
+										isBoolean: true
 									},	
 
 									conservemode: { label: 'Conserve mode', isBoolean: true },
@@ -1551,15 +1559,19 @@
                     },
                     isdefault: {
                       label: 'Default',
-                      converter:cloudStack.converters.toBooleanText
+                      converter: cloudStack.converters.toBooleanText
                     },
                     specifyvlan: {
                       label: 'Specify VLAN',
-                      converter:cloudStack.converters.toBooleanText
+                      converter: cloudStack.converters.toBooleanText
                     },
+										specifyipranges: { 
+										  label: 'Specify IP ranges', 
+											converter: cloudStack.converters.toBooleanText
+										},
 										conservemode: {
                       label: 'Conserve mode',
-                      converter:cloudStack.converters.toBooleanText
+                      converter: cloudStack.converters.toBooleanText
                     },
                     networkrate: {
                       label: 'Network rate',
@@ -1652,4 +1664,4 @@
     return allowedActions;
   };
 
-})(cloudStack, testData, jQuery);
+})(cloudStack, jQuery);
