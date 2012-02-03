@@ -10,11 +10,19 @@
     listView: {
       section: 'instances',
       filters: {
-	    all: { label: 'All' },
+	      all: { label: 'All' },
         mine: { label: 'Mine' },
         running: { label: 'Running' },
         stopped: { label: 'Stopped' },
-        destroyed: { label: 'Destroyed' }
+        destroyed: { 				  
+					preFilter: function(args) {					  
+						if (isAdmin() || isDomainAdmin())
+						  return true;
+						else						
+						  return false;
+					},
+					label: 'Destroyed',
+				}
       },
       fields: {
         name: { label: 'Name', editable: true },
@@ -481,15 +489,9 @@
             confirm: function(args) {  //never being called
               return 'Are you sure you want to deploy an instance?';
             },
-            success: function(args) {  //never being called
-              return args.name + ' is being created.';
-            },
             notification: function(args) {
               //return 'Creating new VM: ' + args.name; //args.name is not available
               return 'Creating new VM';
-            },
-            complete: function(args) {  //never being called
-              return args.name + ' has been created successfully!';
             }
           },
           notification: {
@@ -524,14 +526,8 @@
             confirm: function(args) {
               return 'Are you sure you want to start ' + args.name + '?';
             },
-            success: function(args) {
-              return args.name + ' is being started.';
-            },
             notification: function(args) {
               return 'Starting VM: ' + args.name;
-            },
-            complete: function(args) {
-              return args.name + ' has been started.';
             }
           },
           notification: {
@@ -539,7 +535,8 @@
           }
         },
         stop: {
-          label: 'Stop instance',					
+          label: 'Stop instance',
+          addRow: 'false',
 					createForm: {
 						title: 'Stop instance',
 						desc: 'Please confirm that you want to stop this instance',
@@ -579,14 +576,9 @@
             confirm: function(args) {
               return 'Are you sure you want to stop ' + args.name + '?';
             },
-            success: function(args) {
-              return args.name + ' is being stopped.';
-            },
+
             notification: function(args) {
               return 'Stopping VM: ' + args.name;
-            },
-            complete: function(args) {
-              return args.name + ' has been stopped.';
             }
           },
           notification: {            
@@ -621,14 +613,8 @@
             confirm: function(args) {
               return 'Are you sure you want to reboot ' + args.name + '?';
             },
-            success: function(args) {
-              return args.name + ' is being rebooted.';
-            },
             notification: function(args) {
               return 'Rebooting VM: ' + args.name;
-            },
-            complete: function(args) {
-              return args.name + ' has been rebooted successfully.';
             }
           },
           notification: {
@@ -646,9 +632,6 @@
             },
             notification: function(args) {
               return 'Destroying VM: ' + args.name;
-            },
-            complete: function(args) {
-              return args.name + ' has been destroyed.';
             }
           },
           action: function(args) {
@@ -683,14 +666,8 @@
             confirm: function(args) {
               return 'Are you sure you want to restore ' + args.name + '?';
             },
-            success: function(args) {
-              return args.name + ' is being restored.';
-            },
             notification: function(args) {
               return 'Restoring VM: ' + args.name;
-            },
-            complete: function(args) {
-              return args.name + ' has been restored.';
             }
           },
           action: function(args) {
@@ -703,11 +680,6 @@
                 args.response.success({data:item});
               }
             });
-          },
-          notification: {
-            poll: function(args) {
-              args.complete();
-            }
           }
         }
       },
@@ -721,7 +693,7 @@
 						  array1.push("&listAll=true");
               break;            
             case "mine":
-              array1.push("&domainid=" + g_domainid + "&account=" + g_account);
+              if (!args.context.projects) array1.push("&domainid=" + g_domainid + "&account=" + g_account);
               break;
             case "running":
               array1.push("&listAll=true&state=Running");
@@ -800,14 +772,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to start ' + args.name + '?';
               },
-              success: function(args) {
-                return args.name + ' is being started.';
-              },
               notification: function(args) {
                 return 'Starting VM: ' + args.name;
-              },
-              complete: function(args) {
-                return args.name + ' has been started.';
               }
             },
             notification: {
@@ -855,14 +821,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to stop ' + args.name + '?';
               },
-              success: function(args) {
-                return args.name + ' is being stopped.';
-              },
               notification: function(args) {
                 return 'Stopping VM: ' + args.name;
-              },
-              complete: function(args) {
-                return args.name + ' has been stopped.';
               }
             },
             notification: {
@@ -897,14 +857,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to reboot ' + args.name + '?';
               },
-              success: function(args) {
-                return args.name + ' is being rebooted.';
-              },
               notification: function(args) {
                 return 'Rebooting VM: ' + args.name;
-              },
-              complete: function(args) {
-                return args.name + ' has been rebooted successfully.';
               }
             },
             notification: {
@@ -917,14 +871,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to destroy ' + args.name + '?';
               },
-              success: function(args) {
-                return args.name + ' is being destroyed.';
-              },
               notification: function(args) {
                 return 'Destroying VM: ' + args.name;
-              },
-              complete: function(args) {
-                return args.name + ' has been destroyed.';
               }
             },
             action: function(args) {
@@ -959,14 +907,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to restore ' + args.name + '?';
               },
-              success: function(args) {
-                return args.name + ' is being restored.';
-              },
               notification: function(args) {
                 return 'Restoring VM: ' + args.name;
-              },
-              complete: function(args) {
-                return args.name + ' has been restored.';
               }
             },
             action: function(args) {
@@ -982,7 +924,7 @@
             },
             notification: {
               poll: function(args) {
-                args.complete();
+                args.complete({ data: { state: 'Stopped' }});
               }
             }
           },
@@ -1059,14 +1001,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to attach ISO to instance ' + args.name + '?';
               },
-              success: function(args) {
-                return 'ISO is being attached to instance ' + args.name;
-              },
               notification: function(args) {
                 return 'Attaching ISO to instance ' + args.name;
-              },
-              complete: function(args) {
-                return 'ISO has been attached to instance ' + args.name;
               }
             },
             notification: {
@@ -1080,14 +1016,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to detach ISO ?';
               },
-              success: function(args) {
-                return 'ISO is being detached.';
-              },
               notification: function(args) {
                 return 'Detaching ISO';
-              },
-              complete: function(args) {
-                return 'ISO has been detached.';
               }
             },
             action: function(args) {
@@ -1122,9 +1052,6 @@
             messages: {
               confirm: function(args) {                
                 return 'Please confirm that you want to reset password.';
-              },
-              success: function(args) {
-                return 'Password is being reset.';
               },
               notification: function(args) {
                 return 'Resetting password';
@@ -1180,14 +1107,8 @@
               confirm: function(args) {
                 return 'Are you sure you want to change service offering?';
               },
-              success: function(args) {
-                return 'Service offering is being changed.';
-              },
               notification: function(args) {
                 return 'Changing service offering';
-              },
-              complete: function(args) {
-                return 'Service offering has been changed.';
               }
             },
             createForm: {
@@ -1258,9 +1179,6 @@
               },
               notification: function(args) {
                 return 'Creating template';
-              },
-              complete: function(args) {
-                return 'Template has been created.';
               }
             },
             createForm: {
@@ -1345,14 +1263,8 @@
               confirm: function(args) {
                 return 'Please confirm that you want to migrate instance to another host.';
               },
-              success: function(args) {
-                return 'Instance is being migrated to another host.';
-              },
               notification: function(args) {
                 return 'Migrating instance to another host.';
-              },
-              complete: function(args) {
-                return 'Instance has been migrated to another host.';
               }
             },
             createForm: {
@@ -1429,14 +1341,8 @@
               confirm: function(args) {
                 return 'Please confirm that you want to migrate instance to another primary storage.';
               },
-              success: function(args) {
-                return 'Instance is being migrated to another primary storage.';
-              },
               notification: function(args) {
                 return 'Migrating instance to another primary storage.';
-              },
-              complete: function(args) {
-                return 'Instance has been migrated to another primary storage.';
               }
             },
             createForm: {

@@ -72,6 +72,14 @@ public class Upgrade2214to30 implements DbUpgrade {
         dropKeysIfExist(conn);
         //physical network setup
         setupPhysicalNetworks(conn);
+    	//update domain network ref
+    	updateDomainNetworkRef(conn);
+    	//update redundant routers
+    	updateReduntantRouters(conn);
+        //network offering
+    	createNetworkOfferingServices(conn);
+    	//create service/provider map for networks
+    	createNetworkServices(conn);
     }
 
     @Override
@@ -170,7 +178,7 @@ public class Upgrade2214to30 implements DbUpgrade {
                 values += ",'" + domainId + "'";
                 values += ",'" + broadcastDomainRange + "'";
                 values += ",'Enabled'";
-                values += ",'" + zoneName + "-pNtwk";
+                values += ",'" + zoneName + "-pNtwk'";
                 values += ")";
                 
                 s_logger.debug("Adding PhysicalNetwork "+physicalNetworkId+" for Zone id "+ zoneId);
@@ -179,7 +187,6 @@ public class Upgrade2214to30 implements DbUpgrade {
                 pstmtUpdate = conn.prepareStatement(sql);
                 pstmtUpdate.executeUpdate();
                 pstmtUpdate.close();
-                
                 
                 //add traffic types
                 s_logger.debug("Adding PhysicalNetwork traffic types");
@@ -321,7 +328,6 @@ public class Upgrade2214to30 implements DbUpgrade {
     	encryptHostDetails(conn);
     	encryptVNCPassword(conn);
     	encryptUserCredentials(conn);
-    	createNetworkOfferingServices(conn);
     }
     
     private void encryptConfigValues(Connection conn) {
@@ -343,9 +349,9 @@ public class Upgrade2214to30 implements DbUpgrade {
                 pstmt.executeUpdate();
             }
         } catch (SQLException e) {
-            throw new CloudRuntimeException("Unable encrypt configuration values");
+            throw new CloudRuntimeException("Unable encrypt configuration values ", e);
         } catch (UnsupportedEncodingException e) {
-        	throw new CloudRuntimeException("Unable encrypt configuration values");
+        	throw new CloudRuntimeException("Unable encrypt configuration values ", e);
 		} finally {
             try {
                 if (rs != null) {
@@ -379,9 +385,9 @@ public class Upgrade2214to30 implements DbUpgrade {
                 pstmt.executeUpdate();
             }
         } catch (SQLException e) {
-            throw new CloudRuntimeException("Unable encrypt host_details values");
+            throw new CloudRuntimeException("Unable encrypt host_details values ", e);
         } catch (UnsupportedEncodingException e) {
-        	throw new CloudRuntimeException("Unable encrypt host_details values");
+        	throw new CloudRuntimeException("Unable encrypt host_details values ", e);
 		} finally {
             try {
                 if (rs != null) {
@@ -415,9 +421,9 @@ public class Upgrade2214to30 implements DbUpgrade {
                 pstmt.executeUpdate();
             }
         } catch (SQLException e) {
-            throw new CloudRuntimeException("Unable encrypt vm_instance vnc_password");
+            throw new CloudRuntimeException("Unable encrypt vm_instance vnc_password ", e);
         } catch (UnsupportedEncodingException e) {
-        	throw new CloudRuntimeException("Unable encrypt vm_instance vnc_password");
+        	throw new CloudRuntimeException("Unable encrypt vm_instance vnc_password ", e);
 		} finally {
             try {
                 if (rs != null) {
@@ -452,9 +458,9 @@ public class Upgrade2214to30 implements DbUpgrade {
                 pstmt.executeUpdate();
             }
         } catch (SQLException e) {
-            throw new CloudRuntimeException("Unable encrypt user secret key");
+            throw new CloudRuntimeException("Unable encrypt user secret key ", e);
         } catch (UnsupportedEncodingException e) {
-        	throw new CloudRuntimeException("Unable encrypt user secret key");
+        	throw new CloudRuntimeException("Unable encrypt user secret key ", e);
 		} finally {
             try {
                 if (rs != null) {
@@ -546,7 +552,7 @@ public class Upgrade2214to30 implements DbUpgrade {
                 }
             }
         } catch (SQLException e) {
-            throw new CloudRuntimeException("Unable to upgrade network offering", e);
+            throw new CloudRuntimeException("Unable to create service/provider map for network offerings", e);
         } finally {
             try {
                 if (rs != null) {
@@ -562,4 +568,182 @@ public class Upgrade2214to30 implements DbUpgrade {
     }
     
     
-}
+    private void updateDomainNetworkRef(Connection conn) {
+    	PreparedStatement pstmt = null;
+        ResultSet rs = null;
+        try {
+        	//update subdomain access field for existing domain specific networks
+            pstmt = conn.prepareStatement("select value from configuration where name='allow.subdomain.network.access'");
+            rs = pstmt.executeQuery();
+            while (rs.next()) {
+                boolean subdomainAccess = Boolean.valueOf(rs.getString(1));
+                pstmt = conn.prepareStatement("UPDATE domain_network_ref SET subdomain_access=?");
+                pstmt.setBoolean(1, subdomainAccess);
+                pstmt.executeUpdate();
+                s_logger.debug("Successfully updated subdomain_access field in network_domain table with value " + subdomainAccess);
+            }
+            
+            //convert zone level 2.2.x networks to ROOT domain 3.0 access networks
+            pstmt = conn.prepareStatement("select id from networks where shared=true and is_domain_specific=false and traffic_type='Guest'");
+            rs = pstmt.executeQuery();
+            while (rs.next()) {
+                long networkId = rs.getLong(1);
+                pstmt = conn.prepareStatement("INSERT INTO domain_network_ref (domain_id, network_id, subdomain_access) VALUES (1, ?, 1)");
+                pstmt.setLong(1, networkId);
+                pstmt.executeUpdate();
+                s_logger.debug("Successfully converted zone specific network id=" + networkId + " to the ROOT domain level network with subdomain access set to true");
+            }
+            
+        } catch (SQLException e) {
+            throw new CloudRuntimeException("Unable to update domain network ref", e);
+        } finally {
+            try {
+                if (rs != null) {
+                    rs.close(); 
+                }
+               
+                if (pstmt != null) {
+                    pstmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+    }
+    
+    protected void createNetworkServices(Connection conn) {
+    	PreparedStatement pstmt = null;
+        ResultSet rs = null;
+        ResultSet rs1 = null;
+        try {
+            pstmt = conn.prepareStatement("select id, network_offering_id from networks where traffic_type='Guest'");
+            rs = pstmt.executeQuery();
+            while (rs.next()) {
+            	long networkId = rs.getLong(1);
+            	long networkOfferingId = rs.getLong(2);
+                pstmt = conn.prepareStatement("select service, provider from ntwk_offering_service_map where network_offering_id=?");
+                pstmt.setLong(1, networkOfferingId);
+                rs1 = pstmt.executeQuery();
+                while (rs1.next()) {
+                	String service = rs1.getString(1);
+                	String provider = rs1.getString(2);
+                    pstmt = conn.prepareStatement("INSERT INTO ntwk_service_map (`network_id`, `service`, `provider`, `created`) values (?,?,?, now())");
+                    pstmt.setLong(1, networkId);
+                    pstmt.setString(2, service);
+                    pstmt.setString(3, provider);
+                    pstmt.executeUpdate();
+                }
+                s_logger.debug("Created service/provider map for network id=" + networkId);
+            }
+        } catch (SQLException e) {
+            throw new CloudRuntimeException("Unable to create service/provider map for networks", e);
+        } finally {
+            try {
+                if (rs != null) {
+                    rs.close(); 
+                }
+                
+                if (rs1 != null) {
+                	rs1.close();
+                }
+               
+                if (pstmt != null) {
+                    pstmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+    }
+    
+    
+    protected void updateReduntantRouters(Connection conn) {
+    	PreparedStatement pstmt = null;
+        ResultSet rs = null;
+        ResultSet rs1 = null;
+        try {
+        	//get all networks that need to be updated to the redundant network offerings
+            pstmt = conn.prepareStatement("select ni.network_id, n.network_offering_id from nics ni, networks n where ni.instance_id in (select id from domain_router where is_redundant_router=1) and n.id=ni.network_id and n.traffic_type='Guest'");
+            rs = pstmt.executeQuery();
+            pstmt = conn.prepareStatement("select count(*) from network_offerings");
+            rs1 = pstmt.executeQuery();
+            long ntwkOffCount = 0;
+            while (rs1.next()) {
+                ntwkOffCount = rs1.getLong(1);
+            }
+
+            s_logger.debug("Have " + ntwkOffCount + " networkOfferings");
+            pstmt = conn.prepareStatement("CREATE TEMPORARY TABLE network_offerings2 ENGINE=MEMORY SELECT * FROM network_offerings WHERE id=1");
+            pstmt.executeUpdate();
+            
+            HashMap<Long,Long> newNetworkOfferingMap = new HashMap<Long, Long>();
+            
+            while (rs.next()) {
+                long networkId = rs.getLong(1);
+                long networkOfferingId = rs.getLong(2);
+                s_logger.debug("Updating network offering for the network id=" + networkId + " as it has redundant routers");
+                Long newNetworkOfferingId = null;
+                
+                if (!newNetworkOfferingMap.containsKey(networkOfferingId)) {
+                    //clone the record to 
+                    pstmt = conn.prepareStatement("INSERT INTO network_offerings2 SELECT * FROM network_offerings WHERE id=?");
+                    pstmt.setLong(1, networkOfferingId);
+                    pstmt.executeUpdate();
+                    
+                    pstmt = conn.prepareStatement("SELECT unique_name FROM network_offerings WHERE id=?");
+                    pstmt.setLong(1, networkOfferingId);
+                    rs1 = pstmt.executeQuery();
+                    String uniqueName = null;
+                    while (rs1.next()) {
+                    	uniqueName = rs1.getString(1) + "-redundant";
+                    }
+                    
+                    pstmt = conn.prepareStatement("UPDATE network_offerings2 SET id=?, redundant_router_service=1, unique_name=?, name=? WHERE id=?");
+                    ntwkOffCount = ntwkOffCount + 1;
+                    newNetworkOfferingId = ntwkOffCount;
+                    pstmt.setLong(1, newNetworkOfferingId);
+                    pstmt.setString(2, uniqueName);
+                    pstmt.setString(3, uniqueName);
+                    pstmt.setLong(4, networkOfferingId);
+                    pstmt.executeUpdate();
+
+                    pstmt = conn.prepareStatement("INSERT INTO network_offerings SELECT * from network_offerings2 WHERE id=" + newNetworkOfferingId);
+                    pstmt.executeUpdate();
+                    
+                    pstmt = conn.prepareStatement("UPDATE networks SET network_offering_id=? where id=?");
+                    pstmt.setLong(1, newNetworkOfferingId);
+                    pstmt.setLong(2, networkId);
+                    pstmt.executeUpdate();
+                    
+                    newNetworkOfferingMap.put(networkOfferingId, ntwkOffCount);
+                } else {
+                	pstmt = conn.prepareStatement("UPDATE networks SET network_offering_id=? where id=?");
+                	newNetworkOfferingId = newNetworkOfferingMap.get(networkOfferingId);
+                    pstmt.setLong(1, newNetworkOfferingId);
+                    pstmt.setLong(2, networkId);
+                    pstmt.executeUpdate();
+                }
+                 
+                s_logger.debug("Successfully updated network offering id=" + networkId + " with new network offering id " + newNetworkOfferingId);
+            }
+            
+            pstmt = conn.prepareStatement("DROP TABLE network_offerings2");
+            pstmt.executeUpdate();  
+        } catch (SQLException e) {
+            throw new CloudRuntimeException("Unable to redundant router networks", e);
+        } finally {
+            try {
+                if (rs != null) {
+                    rs.close(); 
+                }
+                
+                if (rs1 != null) {
+                    rs1.close(); 
+                }
+               
+                if (pstmt != null) {
+                    pstmt.close();
+                }
+            } catch (SQLException e) {
+            }
+        }
+    }
+ }

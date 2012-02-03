@@ -13,6 +13,8 @@
     });
   };
   
+	var zoneObjs = [];
+	
   var actionFilters = {
     ipAddress: function(args) {
       var allowedActions = args.context.actions;
@@ -50,10 +52,7 @@
         disallowedActions.push('enableStaticNAT');
         disallowedActions.push('disableStaticNAT');
         disallowedActions.push('destroy');
-      } else {
-        disallowedActions.push('enableVPN');
-        disallowedActions.push('disableVPN');
-      }
+      } 
 
       allowedActions = $.grep(allowedActions, function(item) {
         return $.inArray(item, disallowedActions) == -1;
@@ -64,7 +63,7 @@
 
     securityGroups: function(args) {
       var allowedActions = [];
-      var isSecurityGroupOwner = isAdmin() ||
+      var isSecurityGroupOwner = isAdmin() || isDomainAdmin() ||
         args.context.item.account == args.context.users[0].account;
 
       if (isSecurityGroupOwner &&
@@ -153,8 +152,30 @@
           actions: {
             add: {
               label: 'Add guest network',
+														
+							preFilter: function(args) {
+							  var basicZoneExists = false;
+							  $.ajax({
+								  url: createURL("listZones"),
+									dataType: "json",
+									async: false,
+									success: function(json) {									  						
+										if(json.listzonesresponse.zone != null && json.listzonesresponse.zone.length > 0) {										
+										  zoneObjs = json.listzonesresponse.zone;
+											$(zoneObjs).each(function() {										
+												if(this.networktype == "Basic") {
+												  basicZoneExists = true;
+													return false; //break each loop
+												}
+											});
+										}										
+									}
+								})
+								return !basicZoneExists; //hide Add guest network button if any basic zone exists
+							},
+														
               createForm: {
-                title: 'Add new guest network',
+                title: 'Add guest network',
                 desc: 'Please specify name and zone for this network; note that network will be isolated and source NAT-enabled.',
                 fields: {
                   name: { label: 'Name', validation: { required: true } },
@@ -162,12 +183,11 @@
                   zoneId: {
                     label: 'Zone',
                     validation: { required: true },
+										
+										
                     select: function(args) {
                       $.ajax({
-                        url: createURL('listZones'),
-                        data: {
-                          type: 'Advanced'
-                        },
+                        url: createURL('listZones'),                        
                         success: function(json) {
                           var zones = $.grep(json.listzonesresponse.zone, function(zone) {
                             return zone.networktype == 'Advanced';
@@ -184,6 +204,8 @@
                         }
                       });
                     }
+										
+										
                   },
                   networkOfferingId: {
                     label: 'Network Offering',
@@ -191,10 +213,11 @@
                     select: function(args) {
                       $.ajax({
                         url: createURL('listNetworkOfferings'),
-                        data: {
-                          supportedServices: 'SourceNat',
-                          type: 'isolated',
-                          state: 'Enabled'
+                        data: {                          
+                          type: 'Isolated',
+													supportedServices: 'SourceNat',
+													specifyvlan: false,
+                          state: 'Enabled'													
                         },
                         success: function(json) {
                           var networkOfferings = json.listnetworkofferingsresponse.networkoffering;
@@ -209,13 +232,25 @@
                         }
                       });
                     }
-                  }
+                  },																		
+									guestGateway: { label: 'Guest gateway' },
+                  guestNetmask: { label: 'Guest netmask' }	
                 }
               },
-              action: function(args) {
+              action: function(args) {							  
+								var array1 = [];
+								array1.push("&zoneId=" + args.data.zoneId);
+								array1.push("&name=" + todb(args.data.name));
+								array1.push("&displayText=" + todb(args.data.displayText));
+								array1.push("&networkOfferingId=" + args.data.networkOfferingId);
+								
+								if(args.data.guestGateway != null && args.data.guestGateway.length > 0) 
+									array1.push("&gateway=" + args.data.guestGateway);
+								if(args.data.guestNetmask != null && args.data.guestNetmask.length > 0) 
+									array1.push("&netmask=" + args.data.guestNetmask);												
+																
                 $.ajax({
-                  url: createURL('createNetwork'),
-                  data: args.data,
+                  url: createURL('createNetwork' + array1.join("")),                  
                   success: function(json) {
                     args.response.success({
                       data: json.createnetworkresponse.network
@@ -234,7 +269,7 @@
           id: 'networks',
           fields: {
             name: { label: 'Name' },
-            accounts: { label: 'Account' },
+            account: { label: 'Account' },
             zonename: { label: 'Zone' },
             type: { label: 'Type' },
             vlan: { label: 'VLAN' },
@@ -615,7 +650,8 @@
                             $.ajax({
                               url: createURL('listVirtualMachines'),
                               data: {
-                                networkid: args.context.networks[0].id
+                                networkid: args.context.networks[0].id,
+                                listAll: true
                               },
                               dataType: 'json',
                               async: true,
@@ -965,7 +1001,8 @@
                     url: createURL('createRemoteAccessVpn'),
                     data: {
                       publicipid: args.context.ipAddresses[0].id,
-                      domainid: args.context.ipAddresses[0].domainid
+                      domainid: args.context.ipAddresses[0].domainid,
+											account: args.context.ipAddresses[0].account
                     },
                     dataType: 'json',
                     async: true,
@@ -1058,7 +1095,8 @@
                           $.ajax({
                             url: createURL('listVirtualMachines'),
                             data: {
-                              networkid: args.context.networks[0].id
+                              networkid: args.context.networks[0].id,
+                              listAll: true
                             },
                             dataType: 'json',
                             async: true,
@@ -1442,6 +1480,7 @@
                       $.ajax({
                         url: createURL('listFirewallRules'),
                         data: {
+                          listAll: true,
                           ipaddressid: args.context.ipAddresses[0].id
                         },
                         dataType: 'json',
@@ -1483,7 +1522,8 @@
                     $.ajax({
                       url: createURL('listVirtualMachines'),
                       data: {
-                        id: args.context.ipAddresses[0].virtualmachineid
+                        id: args.context.ipAddresses[0].virtualmachineid,
+                        listAll: true
                       },
                       dataType: 'json',
                       async: true,
@@ -1610,7 +1650,8 @@
                           $.ajax({
                             url: createURL('listVirtualMachines'),
                             data: {
-                              networkid: args.context.ipAddresses[0].associatednetworkid
+                              networkid: args.context.ipAddresses[0].associatednetworkid,
+                              listAll: true
                             },
                             dataType: 'json',
                             async: true,
@@ -1697,6 +1738,7 @@
                           success: function(data) {
                             var itemData = args.itemData;
                             var jobID = data.createloadbalancerruleresponse.jobid;
+                            var lbID = data.createloadbalancerruleresponse.id;
 
                             $.ajax({
                               url: createURL('assignToLoadBalancerRule'),
@@ -1709,8 +1751,8 @@
                               dataType: 'json',
                               async: true,
                               success: function(data) {
-                                var lbCreationComplete = false;
                                 var jobID = data.assigntoloadbalancerruleresponse.jobid;
+                                var lbStickyCreated = false;
                                 
                                 args.response.success({																  
                                   _custom: {
@@ -1723,24 +1765,19 @@
                                       var error = args.error;
                                       
                                       pollAsyncJobResult({
-                                        _custom: args._custom,
+                                        _custom: { jobId: jobID },
                                         complete: function(args) {
-                                          if (lbCreationComplete) {
-                                            return;
-                                          }
+                                          if (lbStickyCreated) return;
                                           
-                                          lbCreationComplete = true;
+                                          lbStickyCreated = true;
                                           
                                           // Create stickiness policy
                                           if (stickyData &&
                                               stickyData.methodname &&
                                               stickyData.methodname != 'None') {
-                                            cloudStack.lbStickyPolicy.actions.add(
-                                              args.data.loadbalancer.id,
-                                              stickyData,
-                                              complete, // Complete
-                                              complete // Error
-                                            );
+                                            cloudStack.lbStickyPolicy.actions.add(lbID,
+                                                                                  stickyData,
+                                                                                  complete, error);
                                           } else {
                                             complete();
                                           }
@@ -1852,7 +1889,7 @@
                       }
                     },
                     dataProvider: function(args) {
-										  var apiCmd = "listLoadBalancerRules";												  									
+										  var apiCmd = "listLoadBalancerRules&listAll=true";												  									
 											//if(args.context.networks[0].type == "Shared") 
 											//	apiCmd += "&domainid=" + g_domainid + "&account=" + g_account;
 											//else //args.context.networks[0].type == "Isolated"
@@ -1878,6 +1915,7 @@
                               url: createURL('listLBStickinessPolicies'),
                               async: false,
                               data: {
+                                listAll: true,
                                 lbruleid: item.id
                               },
                               success: function(json) {
@@ -1914,6 +1952,7 @@
                               dataType: 'json',
                               async: false,
                               data: {
+                                listAll: true,
                                 id: item.id
                               },
                               success: function(data) {
@@ -1926,6 +1965,9 @@
 
                             $.extend(item, {
                               _itemData: lbInstances,
+                              _maxLength: {
+                                name: 7
+                              },
                               sticky: stickyData
                             });
                           });
@@ -1946,6 +1988,7 @@
                           $.ajax({
                             url: createURL('listVirtualMachines'),
                             data: {
+                              listAll: true,
                               networkid: args.context.ipAddresses[0].associatednetworkid
                             },
                             dataType: 'json',
@@ -2064,7 +2107,8 @@
                       $.ajax({
                         url: createURL('listPortForwardingRules'),
                         data: {
-                          ipaddressid: args.context.ipAddresses[0].id
+                          ipaddressid: args.context.ipAddresses[0].id,
+                          listAll: true
                         },
                         dataType: 'json',
                         async: true,
@@ -2083,6 +2127,7 @@
                               dataType: 'json',
                               async: true,
                               data: {
+                                listAll: true,
                                 id: item.virtualmachineid
                               },
                               success: function(data) {
@@ -2114,8 +2159,10 @@
               vpn: {
                 title: 'VPN',
                 custom: function(args) {
-                  var ipAddress = args.context.ipAddresses[0].ipaddress;
-                  var psk = args.context.ipAddresses[0].remoteaccessvpn.presharedkey;
+                  var ipAddress = args.context.ipAddresses[0].ipaddress;									
+									var psk = "";
+									if(args.context.ipAddresses[0].remoteaccessvpn != null)
+                    psk = args.context.ipAddresses[0].remoteaccessvpn.presharedkey;
 
                   return $('<div>')
                     .append(
@@ -2191,11 +2238,12 @@
                           }
                         }
                       },
-                      dataProvider: function(args) {
+                      dataProvider: function(args) {										
                         $.ajax({
                           url: createURL('listVpnUsers'),
                           data: {
-                            domainid: args.context.ipAddresses[0].domainid
+                            domainid: args.context.ipAddresses[0].domainid,
+														account: args.context.ipAddresses[0].account
                           },
                           dataType: 'json',
                           async: true,

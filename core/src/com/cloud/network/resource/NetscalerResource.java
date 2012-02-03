@@ -459,6 +459,7 @@ public class NetscalerResource implements ServerResource {
                                 newService.set_servername(nsServerName);
                                 newService.set_state("ENABLED");
                                 newService.set_servicetype(lbProtocol);
+
                                 apiCallResult = com.citrix.netscaler.nitro.resource.config.basic.service.add(_netscalerService, newService);
                                 if (apiCallResult.errorcode != 0) {
                                     throw new ExecutionException("Failed to create service " + nsServiceName + " using server " + nsServerName + " due to" + apiCallResult.message);
@@ -799,8 +800,8 @@ public class NetscalerResource implements ServerResource {
                         iNatRule.set_name(iNatRuleName);
                         iNatRule.set_publicip(srcIp);
                         iNatRule.set_privateip(dstIP);
-                        iNatRule.set_usnip("ON");
-                        iNatRule.set_usip("OFF");
+                        iNatRule.set_usnip("OFF");
+                        iNatRule.set_usip("ON");
                         try {
                             apiCallResult = inat.add(_netscalerService, iNatRule);
                         } catch (nitro_exception e) {
@@ -821,6 +822,7 @@ public class NetscalerResource implements ServerResource {
                     s_logger.debug("Deleted Inat rule on the Netscaler device " + _ip + " to remove static NAT from " +  srcIp + " to " + dstIP);
                 }
 
+                saveConfiguration();
                 results[i++] = "Static nat rule from " + srcIp + " to " + dstIP + " successfully " + (rule.revoked() ? " revoked.":" created.");
             }
         }  catch (Exception e) {
@@ -1118,6 +1120,12 @@ public class NetscalerResource implements ServerResource {
             vserver.set_port(srcPort);
             vserver.set_servicetype(lbProtocol);
             vserver.set_lbmethod(lbMethod);
+
+            // netmask can only be set for source IP load balancer algorithm
+            if (!lbMethod.equalsIgnoreCase("SOURCEIPHASH")) {
+                vserver.set_netmask(null);
+                vserver.set_v6netmasklen(null);
+            }
 
             if ((stickyPolicies != null) && (stickyPolicies.length > 0) && (stickyPolicies[0] != null)){
                 long timeout = 2;// netscaler default 2 min

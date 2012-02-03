@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -254,6 +255,7 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
     
     protected float _memOverprovisioningFactor = 1;
     protected boolean _reserveMem = false;
+    protected boolean _recycleHungWorker = false;
     protected DiskControllerType _rootDiskController = DiskControllerType.ide;
 
     protected ManagedObjectReference _morHyperHost;
@@ -739,10 +741,9 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         }
         String cidrSize = Long.toString(NetUtils.getCidrSize(vlanNetmask));
         if (sourceNat) {
-            args += " -f ";
-            args += " -l ";
-            args += publicIpAddress + "/" + cidrSize;
-        } else if (firstIP) {
+            args += " -s ";
+        }
+        if (firstIP) {
             args += " -f ";
             args += " -l ";
             args += publicIpAddress + "/" + cidrSize;
@@ -1398,15 +1399,20 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
                 if (vol.getType() == Volume.Type.ISO) {
                     controllerKey = ideControllerKey;
                 } else {
-                	if(vmSpec.getDetails() != null && vmSpec.getDetails().get(VmDetailConstants.ROOK_DISK_CONTROLLER) != null)
-                	{
-                		if(vmSpec.getDetails().get(VmDetailConstants.ROOK_DISK_CONTROLLER).equalsIgnoreCase("scsi"))
-	                		controllerKey = scsiControllerKey;
-	                	else
-	                		controllerKey = ideControllerKey;
-                	} else {
-                		controllerKey = scsiControllerKey;
-                	}
+                    if(vol.getType() == Volume.Type.ROOT) {
+                    	if(vmSpec.getDetails() != null && vmSpec.getDetails().get(VmDetailConstants.ROOK_DISK_CONTROLLER) != null)
+                    	{
+                    		if(vmSpec.getDetails().get(VmDetailConstants.ROOK_DISK_CONTROLLER).equalsIgnoreCase("scsi"))
+    	                		controllerKey = scsiControllerKey;
+    	                	else
+    	                		controllerKey = ideControllerKey;
+                    	} else {
+                    		controllerKey = scsiControllerKey;
+                    	}
+                    } else {
+                        // DATA volume always use SCSI device
+                        controllerKey = scsiControllerKey;
+                    }
                 }
 
                 if (vol.getType() != Volume.Type.ISO) {
@@ -2143,6 +2149,7 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         final String vmName = vm.getName();
         try {
             VmwareHypervisorHost hyperHost = getHyperHost(getServiceContext());
+            VmwareManager mgr = hyperHost.getContext().getStockObject(VmwareManager.CONTEXT_STOCK_NAME);
 
             // find VM through datacenter (VM is not at the target host yet)
             VirtualMachineMO vmMo = hyperHost.findVmOnPeerHyperHost(vmName);
@@ -2156,6 +2163,19 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
             for (NicTO nic : nics) {
                 // prepare network on the host
                 prepareNetworkFromNicInfo(new HostMO(getServiceContext(), _morHyperHost), nic);
+            }
+
+            String secStoreUrl = mgr.getSecondaryStorageStoreUrl(Long.parseLong(_dcId));
+            if(secStoreUrl == null) {
+                String msg = "secondary storage for dc " + _dcId + " is not ready yet?";
+                throw new Exception(msg);
+            }
+            mgr.prepareSecondaryStorageStore(secStoreUrl);
+            
+            ManagedObjectReference morSecDs = prepareSecondaryDatastoreOnHost(secStoreUrl);
+            if (morSecDs == null) {
+                String msg = "Failed to prepare secondary storage on host, secondary store url: " + secStoreUrl;
+                throw new Exception(msg);
             }
 
             synchronized (_vms) {
@@ -2427,8 +2447,7 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
             } else {
 	            String msg = "AttachIsoCommand(detach) failed due to " + VmwareHelper.getExceptionMessage(e);
 	            s_logger.warn(msg, e);
-	            s_logger.warn("For detachment failure, we will eventually continue on to allow deassociating it from CloudStack DB");
-	            return new Answer(cmd);
+	            return new Answer(cmd, false, msg);
             }
         }
     }
@@ -3121,7 +3140,55 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
             VmwareManager mgr = hyperHost.getContext().getStockObject(VmwareManager.CONTEXT_STOCK_NAME);
             
             if(hyperHost.isHyperHostConnected()) {
-            	mgr.gcLeftOverVMs(context);
+                mgr.gcLeftOverVMs(context);
+                
+                if(_recycleHungWorker) {
+                    s_logger.info("Scan hung worker VM to recycle");
+                    
+                    // GC worker that has been running for too long
+                    ObjectContent[] ocs = hyperHost.getVmPropertiesOnHyperHost(
+                            new String[] {"name", "config.template", "runtime.powerState", "runtime.bootTime"});
+                    if(ocs != null) {
+                        for(ObjectContent oc : ocs) {
+                            DynamicProperty[] props = oc.getPropSet();
+                            if(props != null) {
+                                String name = null;
+                                boolean template = false;
+                                VirtualMachinePowerState powerState = VirtualMachinePowerState.poweredOff;
+                                GregorianCalendar bootTime = null;
+                                
+                                for(DynamicProperty prop : props) {
+                                    if(prop.getName().equals("name"))
+                                        name = prop.getVal().toString();
+                                    else if(prop.getName().equals("config.template"))
+                                        template = (Boolean)prop.getVal();
+                                    else if(prop.getName().equals("runtime.powerState"))
+                                        powerState = (VirtualMachinePowerState)prop.getVal();
+                                    else if(prop.getName().equals("runtime.bootTime")) 
+                                        bootTime = (GregorianCalendar)prop.getVal();
+                                }
+                                
+                                if(!template && name.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+                                    boolean recycle = false;
+    
+                                    // recycle stopped worker VM and VM that has been running for too long (hard-coded 10 hours for now)
+                                    if(powerState == VirtualMachinePowerState.poweredOff)
+                                        recycle = true;
+                                    else if(bootTime != null && (new Date().getTime() - bootTime.getTimeInMillis() > 10*3600*1000))
+                                        recycle = true;
+                                    
+                                    if(recycle) {
+                                        s_logger.info("Recycle pending worker VM: " + name);
+                                        
+                                        VirtualMachineMO vmMo = new VirtualMachineMO(hyperHost.getContext(), oc.getObj());
+                                        vmMo.powerOff();
+                                        vmMo.destroy();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 s_logger.error("Host is no longer connected.");
             	return null;
@@ -3530,6 +3597,73 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         return VirtualMachineGuestOsIdentifier.otherGuest;
     }
 
+    private void prepareNetworkForVmTargetHost(HostMO hostMo, VirtualMachineMO vmMo) throws Exception {
+        assert (vmMo != null);
+        assert (hostMo != null);
+
+        String[] networks = vmMo.getNetworks();
+        for (String networkName : networks) {
+            HostPortGroupSpec portGroupSpec = hostMo.getHostPortGroupSpec(networkName);
+            HostNetworkTrafficShapingPolicy shapingPolicy = null;
+            if (portGroupSpec != null) {
+                shapingPolicy = portGroupSpec.getPolicy().getShapingPolicy();
+            }
+
+            if (networkName.startsWith("cloud.private")) {
+                String[] tokens = networkName.split("\\.");
+                if (tokens.length == 3) {
+                    Integer networkRateMbps = null;
+                    if (shapingPolicy != null && shapingPolicy.getEnabled() != null && shapingPolicy.getEnabled().booleanValue()) {
+                        networkRateMbps = (int) (shapingPolicy.getPeakBandwidth().longValue() / (1024 * 1024));
+                    }
+                    String vlanId = null;
+                    if(!"untagged".equalsIgnoreCase(tokens[2]))
+                        vlanId = tokens[2];
+
+                    HypervisorHostHelper.prepareNetwork(this._privateNetworkVSwitchName, "cloud.private",
+                        hostMo, vlanId, networkRateMbps, null, this._ops_timeout, false);
+                } else {
+                    s_logger.info("Skip suspecious cloud network " + networkName);
+                }
+            } else if (networkName.startsWith("cloud.public")) {
+                String[] tokens = networkName.split("\\.");
+                if (tokens.length == 3) {
+                    Integer networkRateMbps = null;
+                    if (shapingPolicy != null && shapingPolicy.getEnabled() != null && shapingPolicy.getEnabled().booleanValue()) {
+                        networkRateMbps = (int) (shapingPolicy.getPeakBandwidth().longValue() / (1024 * 1024));
+                    }
+                    String vlanId = null;
+                    if(!"untagged".equalsIgnoreCase(tokens[2]))
+                        vlanId = tokens[2];
+
+                    HypervisorHostHelper.prepareNetwork(this._publicNetworkVSwitchName, "cloud.public",
+                        hostMo, vlanId, networkRateMbps, null, this._ops_timeout, false);
+                } else {
+                    s_logger.info("Skip suspecious cloud network " + networkName);
+                }
+            } else if (networkName.startsWith("cloud.guest")) {
+                String[] tokens = networkName.split("\\.");
+                if (tokens.length >= 3) {
+                    Integer networkRateMbps = null;
+                    if (shapingPolicy != null && shapingPolicy.getEnabled() != null && shapingPolicy.getEnabled().booleanValue()) {
+                        networkRateMbps = (int) (shapingPolicy.getPeakBandwidth().longValue() / (1024 * 1024));
+                    }
+
+                    String vlanId = null;
+                    if(!"untagged".equalsIgnoreCase(tokens[2]))
+                        vlanId = tokens[2];
+
+                    HypervisorHostHelper.prepareNetwork(this._guestNetworkVSwitchName, "cloud.guest",
+                        hostMo, vlanId, networkRateMbps, null, this._ops_timeout, false);
+                } else {
+                    s_logger.info("Skip suspecious cloud network " + networkName);
+                }
+            } else {
+                s_logger.info("Skip non-cloud network " + networkName + " when preparing target host");
+            }
+        }
+    }
+    
     private HashMap<String, State> getVmStates() throws Exception {
         VmwareHypervisorHost hyperHost = getHyperHost(getServiceContext());
         ObjectContent[] ocs = hyperHost.getVmPropertiesOnHyperHost(new String[] { "name", "runtime.powerState", "config.template" });
@@ -3826,24 +3960,8 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         _dcId = (String) params.get("zone");
         _pod = (String) params.get("pod");
         _cluster = (String) params.get("cluster");
+        
         _guid = (String) params.get("guid");
-        
-        String value = (String) params.get("cpu.overprovisioning.factor");
-        if(value != null)
-        	_cpuOverprovisioningFactor = Float.parseFloat(value);
-        
-        value = (String) params.get("vmware.reserve.cpu");
-        if(value != null && value.equalsIgnoreCase("true"))
-        	_reserveCpu = true;
-        
-        value = (String) params.get("mem.overprovisioning.factor");
-        if(value != null)
-        	_memOverprovisioningFactor = Float.parseFloat(value);
-        
-        value = (String) params.get("vmware.reserve.mem");
-        if(value != null && value.equalsIgnoreCase("true"))
-        	_reserveMem = true;
-        
         String[] tokens = _guid.split("@");
         _vCenterAddress = tokens[1];
         _morHyperHost = new ManagedObjectReference();
@@ -3871,6 +3989,26 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         _privateNetworkVSwitchName = (String) params.get("private.network.vswitch.name");
         _publicNetworkVSwitchName = (String) params.get("public.network.vswitch.name");
         _guestNetworkVSwitchName = (String) params.get("guest.network.vswitch.name");
+
+        String value = (String) params.get("cpu.overprovisioning.factor");
+        if(value != null)
+            _cpuOverprovisioningFactor = Float.parseFloat(value);
+
+        value = (String) params.get("vmware.reserve.cpu");
+        if(value != null && value.equalsIgnoreCase("true"))
+            _reserveCpu = true;
+        
+        value = (String) params.get("vmware.recycle.hung.wokervm");
+        if(value != null && value.equalsIgnoreCase("true"))
+            _recycleHungWorker = true;
+
+        value = (String) params.get("mem.overprovisioning.factor");
+        if(value != null)
+            _memOverprovisioningFactor = Float.parseFloat(value);
+
+        value = (String) params.get("vmware.reserve.mem");
+        if(value != null && value.equalsIgnoreCase("true"))
+            _reserveMem = true;
         
         value = (String)params.get("vmware.root.disk.controller");
         if(value != null && value.equalsIgnoreCase("scsi"))

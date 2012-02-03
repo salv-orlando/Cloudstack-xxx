@@ -13,12 +13,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
-ALTER TABLE `cloud`.`template_host_ref` DROP COLUMN `pool_id`;
-DELETE from `cloud`.`op_host_capacity` where capacity_type in (2,4,6);
+
 ALTER TABLE `cloud_usage`.`usage_network` DROP COLUMN `net_bytes_received`;
 ALTER TABLE `cloud_usage`.`usage_network` DROP COLUMN `net_bytes_sent`;
 ALTER TABLE `cloud_usage`.`usage_network` DROP COLUMN `current_bytes_received`;
 ALTER TABLE `cloud_usage`.`usage_network` DROP COLUMN `current_bytes_sent`;
+
+ALTER TABLE `cloud`.`template_host_ref` DROP COLUMN `pool_id`;
+DELETE from `cloud`.`op_host_capacity` where capacity_type in (2,4,6);
 ALTER TABLE `cloud`.`vm_instance` DROP COLUMN `private_netmask`; 
 
 ALTER TABLE `cloud`.`security_group_rule` drop foreign key `fk_security_ingress_rule___security_group_id`;
@@ -36,3 +38,12 @@ ALTER TABLE `cloud`.`network_offerings` DROP COLUMN `lb_service`;
 ALTER TABLE `cloud`.`network_offerings` DROP COLUMN `userdata_service`;
 ALTER TABLE `cloud`.`network_offerings` DROP COLUMN `vpn_service`;
 ALTER TABLE `cloud`.`network_offerings` DROP COLUMN `dhcp_service`;
+
+
+ALTER TABLE `cloud`.`networks` DROP COLUMN `shared`;
+ALTER TABLE `cloud`.`networks` DROP COLUMN `is_domain_specific`;
+ALTER TABLE `cloud`.`networks` DROP COLUMN `is_security_group_enabled`;
+ALTER TABLE `cloud`.`networks` DROP COLUMN `is_default`;
+
+UPDATE `cloud`.`networks` SET guest_type=(SELECT guest_type FROM network_offerings no where no.id=network_offering_id);
+UPDATE `cloud`.`networks` SET guru_name='ExternalGuestNetworkGuru' where guest_type='Isolated';

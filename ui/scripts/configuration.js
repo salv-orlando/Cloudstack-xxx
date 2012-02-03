@@ -1,4 +1,8 @@
 (function(cloudStack, $) {
+
+  var requiredNetworkOfferingExists = false;
+  var networkServiceObjs = [];
+	
   cloudStack.sections.configuration = {
     title: 'Configuration',
     id: 'configuration',
@@ -1011,6 +1015,14 @@
               async: true,
               success: function(json) {
                 var items = json.listnetworkofferingsresponse.networkoffering;
+																
+								$(items).each(function(){
+								  if(this.availability == "Required") {
+									  requiredNetworkOfferingExists = true;
+										return false; //break each loop
+									}
+								});								
+													
                 args.response.success({
                   actionFilter: networkOfferingActionfilter,
                   data:items
@@ -1026,6 +1038,282 @@
             add: {
               label: 'Add network offering',
 
+							createForm: {
+                title: 'Add network offering',
+                desc: 'Please specify the network offering',																
+								preFilter: function(args) {
+                  var $availability = args.$form.find('.form-item[rel=availability]');
+                  
+                  args.$form.bind('change', function() {
+                    var $sourceNATField = args.$form.find('input[name=\"service.SourceNat.isEnabled\"]');
+                    var $guestTypeField = args.$form.find('select[name=guestIpType]');
+
+                    if (!requiredNetworkOfferingExists &&
+                        $sourceNATField.is(':checked') &&
+                        $guestTypeField.val() == 'Isolated') {
+                      $availability.css('display', 'inline-block');
+                    } else {
+                      $availability.hide();
+                    }
+                  });
+								},				
+                fields: {
+                  name: { label: 'Name', validation: { required: true } },
+
+                  displayText: { label: 'Display Text', validation: { required: true } },
+
+                  networkRate: { label: 'Network Rate' },
+
+                  trafficType: {
+                    label: 'Traffic Type', validation: { required: true },
+                    select: function(args) {
+                      args.response.success({
+                        data: [
+                          { id: 'GUEST', description: 'Guest' }
+                        ]
+                      });
+                    }
+                  },
+
+                  guestIpType: {
+                    label: 'Guest Type',
+                    select: function(args) {
+                      args.response.success({
+                        data: [
+                          { id: 'Isolated', description: 'Isolated' },
+                          { id: 'Shared', description: 'Shared' }
+                        ]
+                      });
+																						
+											args.$select.change(function() {											  
+												var $form = $(this).closest("form");
+                        
+												if ($(this).val() == "Shared") {
+                          $form.find('.form-item[rel=specifyVlan]').hide();
+												} else {  //$(this).val() == "Isolated"   
+												  $form.find('.form-item[rel=specifyVlan]').css('display', 'inline-block');
+												}												
+											});
+                    }
+                  },
+
+                  specifyVlan: { label: 'Specify VLAN', isBoolean: true },																
+								
+                  supportedServices: {
+                    label: 'Supported Services',
+
+                    dynamic: function(args) {
+                      $.ajax({
+                        url: createURL('listSupportedNetworkServices'),
+                        dataType: 'json',
+                        async: true,
+                        success: function(data) {
+                          networkServiceObjs = data.listsupportednetworkservicesresponse.networkservice;
+                          var fields = {}, providerCanenableindividualserviceMap = {}, providerServicesMap = {}, providerDropdownsForciblyChangedTogether = {};													
+                          $(networkServiceObjs).each(function() {
+                            var serviceName = this.name;
+                            var providerObjs = this.provider;
+                            var serviceDisplayName;
+
+                            // Sanitize names
+                            switch (serviceName) {
+                            case 'Vpn': serviceDisplayName = 'VPN'; break;
+                            case 'Dhcp': serviceDisplayName = 'DHCP'; break;
+                            case 'Dns': serviceDisplayName = 'DNS'; break;
+                            case 'Lb': serviceDisplayName = 'Load Balancer'; break;
+                            case 'SourceNat': serviceDisplayName = 'Source NAT'; break;
+                            case 'StaticNat': serviceDisplayName = 'Static NAT'; break;
+                            case 'PortForwarding': serviceDisplayName = 'Port Forwarding'; break;
+                            case 'SecurityGroup': serviceDisplayName = 'Security Groups'; break;
+                            case 'UserData': serviceDisplayName = 'User Data'; break;
+                            default: serviceDisplayName = serviceName; break;
+                            }
+
+                            var id = {
+                              isEnabled: 'service' + '.' + serviceName + '.' + 'isEnabled',
+                              capabilities: 'service' + '.' + serviceName + '.' + 'capabilities',
+                              provider: 'service' + '.' + serviceName + '.' + 'provider'
+                            };
+
+                            fields[id.isEnabled] = { label: serviceDisplayName, isBoolean: true };
+																												
+														if(providerObjs != null && providerObjs.length > 1) {	//present provider dropdown when there are multiple providers for a service												
+															fields[id.provider] = {
+																label: serviceDisplayName + ' Provider',
+																isHidden: true,
+																dependsOn: id.isEnabled,
+																select: function(args) {																
+																	//Virtual Router needs to be the first choice in provider dropdown (Bug 12509)																	
+																	var items = [];
+																	$(providerObjs).each(function(){
+																	  if(this.name == "VirtualRouter")
+																		  items.unshift({id: this.name, description: this.name});
+																		else
+																		  items.push({id: this.name, description: this.name});
+																																				
+																		if(!(this.name in providerCanenableindividualserviceMap))
+																		  providerCanenableindividualserviceMap[this.name] = this.canenableindividualservice;
+																																				
+                                    if(!(this.name in providerServicesMap))													
+                                      providerServicesMap[this.name] = [serviceName];
+                                    else																			
+																		  providerServicesMap[this.name].push(serviceName);																		
+																	});
+																															
+																	args.response.success({
+																		data: items
+																	});
+																																																	
+																	args.$select.change(function() {		
+                                    var $thisProviderDropdown = $(this);																	
+                                    var providerName = $(this).val();																	
+																		var canenableindividualservice = providerCanenableindividualserviceMap[providerName];																	  
+																		if(canenableindividualservice == false) { //This provider can NOT enable individual service, therefore, force all services supported by this provider have this provider selected in provider dropdown
+																		  var serviceNames = providerServicesMap[providerName];			
+																			if(serviceNames != null && serviceNames.length > 1) {			
+                                        providerDropdownsForciblyChangedTogether = {};  //reset																			
+																				$(serviceNames).each(function(){																			 
+																					var providerDropdownId = 'service' + '.' + this + '.' + 'provider';		
+                                          providerDropdownsForciblyChangedTogether[providerDropdownId] = 1;																					
+																					$("select[name='" + providerDropdownId + "']").val(providerName);																				
+																				});	
+                                      }
+																		}		
+                                    else { //canenableindividualservice == true
+																		  if($thisProviderDropdown.context.name in providerDropdownsForciblyChangedTogether) { //if this provider dropdown is one of provider dropdowns forcibly changed together earlier, make other forcibly changed provider dropdowns restore default option (i.e. 1st option in dropdown)
+																			  for(var key in providerDropdownsForciblyChangedTogether) {																				  
+																					if(key == $thisProviderDropdown.context.name)
+																					  continue; //skip to next item in for loop
+																					else
+																					  $("select[name='" + key + "']").val(""); //no "" option in dropdown, so will force it to select 1st option in dropdown
+																				}																			 																																	
+																				providerDropdownsForciblyChangedTogether = {};  //reset			
+                                      }																				
+																		}																		
+																	});		
+																}
+															};
+														}
+														else if(providerObjs != null && providerObjs.length == 1){ //present hidden field when there is only one provider for a service		
+														  fields[id.provider] = {
+															  label: serviceDisplayName + ' Provider',
+																isHidden: true,
+																defaultValue: providerObjs[0].name
+															};
+														}														
+                          });
+
+                          args.response.success({
+                            fields: fields
+                          });
+                        },
+                        error: function(data) {
+                          args.response.error(parseXMLHttpResponse(data));
+                        }
+                      });
+                    }
+                  },
+
+									//show or hide upon checked services and selected providers above (begin)
+                  serviceOfferingId: {
+                    label: 'Service Offering',
+                    select: function(args) {
+                      $.ajax({
+                        url: createURL('listServiceOfferings&issystem=true'),
+                        dataType: 'json',
+                        async: true,
+                        success: function(data) {
+                          var serviceOfferings = data.listserviceofferingsresponse.serviceoffering;
+
+                          args.response.success({
+                            data: $.merge(
+                              [{
+                                id: null,
+                                description: 'None'
+                              }],
+                              $.map(serviceOfferings, function(elem) {
+                                return {
+                                  id: elem.id,
+                                  description: elem.name
+                                };
+                              })
+                            )
+                          });
+                        },
+                        error: function(data) {
+                          args.response.error(parseXMLHttpResponse(data));
+                        }
+                      });
+                    }
+                  },
+									
+                  "service.SourceNat.redundantRouterCapabilityCheckbox" : {
+                    label: "Redundant router capability",
+                    isHidden: true,
+                    dependsOn: 'service.SourceNat.isEnabled',
+                    isBoolean: true
+                  },
+
+                  "service.SourceNat.sourceNatTypeDropdown": {
+                    label: 'Supported Source NAT type',
+                    isHidden: true,
+                    dependsOn: 'service.SourceNat.isEnabled',
+                    select: function(args) {
+                      args.response.success({
+                        data: [
+                          { id: 'peraccount', description: 'Per account'},
+                          { id: 'perzone', description: 'Per zone'},
+                        ]
+                      });
+                    }
+                  },
+									"service.Lb.elasticLbCheckbox" : {
+                    label: "Elastic LB",
+                    isHidden: true,
+                    dependsOn: 'service.Lb.isEnabled',
+                    isBoolean: true
+                  },
+                  "service.Lb.lbIsolationDropdown": {
+                    label: 'LB isolation',
+                    isHidden: true,
+                    dependsOn: 'service.Lb.isEnabled',
+                    select: function(args) {
+                      args.response.success({
+                        data: [
+                          { id: 'dedicated', description: 'Dedicated' },
+                          { id: 'shared', description: 'Shared' }
+                        ]
+                      })
+                    }
+                  },									
+									"service.StaticNat.elasticIpCheckbox" : {
+										label: "Elastic IP",
+										isHidden: true,
+										dependsOn: 'service.StaticNat.isEnabled',
+										isBoolean: true
+									},	
+                  //show or hide upon checked services and selected providers above (end)
+									
+									
+									conservemode: { label: 'Conserve mode', isBoolean: true },
+									
+                  tags: { label: 'Tags' },
+									
+									availability: {
+                    label: 'Availability',
+                    isHidden: true,  
+                    select: function(args) {
+                      args.response.success({
+                        data: [
+                          { id: 'Optional', description: 'Optional' },
+                          { id: 'Required', description: 'Required' }                          
+                        ]
+                      });
+                    }
+                  }
+                }
+              },
+							
               action: function(args) {
                 var formData = args.data;
                 var inputData = {};
@@ -1085,17 +1373,22 @@
                   return key;
                 }).join(',');
 
-                if (inputData['specifyVlan'] == 'on') {
-                  inputData['specifyVlan'] = true;
-                } else {
-                  inputData['specifyVlan'] = false;
-                }
 								
-								if (inputData['specifyIpRanges'] == 'on') {
-                  inputData['specifyIpRanges'] = true;
-                } else {
-                  inputData['specifyIpRanges'] = false;
-                }
+								if(inputData['guestIpType'] == "Shared"){ //specifyVlan checkbox is hidden
+								  inputData['specifyVlan'] = true;
+									inputData['specifyIpRanges'] = true;
+								}
+								else if (inputData['guestIpType'] == "Isolated") { //specifyVlan checkbox is shown
+									if (inputData['specifyVlan'] == 'on') { //specifyVlan checkbox is checked
+										inputData['specifyVlan'] = true;	
+                    inputData['specifyIpRanges'] = true;										
+									}
+									else { //specifyVlan checkbox is unchecked
+										inputData['specifyVlan'] = false;
+										inputData['specifyIpRanges'] = false;
+									}					
+								}			
+								
 																
 								if (inputData['conservemode'] == 'on') {
                   inputData['conservemode'] = true;
@@ -1110,15 +1403,23 @@
                   inputData['serviceProviderList[' + serviceProviderIndex + '].provider'] = value;
                   serviceProviderIndex++;
                 });      
-
+												
+								if(args.$form.find('.form-item[rel=availability]').css("display") == "none")
+                  inputData['availability'] = 'Optional';								
+														
                 $.ajax({
                   url: createURL('createNetworkOffering'),
                   data: inputData,
                   dataType: 'json',
                   async: true,
                   success: function(data) {
+									  var item = data.createnetworkofferingresponse.networkoffering;
+								
+										if(inputData['availability'] == "Required")
+										  requiredNetworkOfferingExists = true;
+																			
                     args.response.success({
-                      data: data.createnetworkofferingresponse.networkoffering,
+                      data: item,
                       actionFilter: networkOfferingActionfilter
                     });
                   },
@@ -1127,192 +1428,8 @@
                     args.response.error(parseXMLHttpResponse(data));
                   }
                 });
-              },
-
-              createForm: {
-                title: 'Add network offering',
-                desc: 'Please specify the network offering',
-                fields: {
-                  name: { label: 'Name', validation: { required: true } },
-
-                  displayText: { label: 'Display Text', validation: { required: true } },
-
-                  networkRate: { label: 'Network Rate' },
-
-                  trafficType: {
-                    label: 'Traffic Type', validation: { required: true },
-                    select: function(args) {
-                      args.response.success({
-                        data: [
-                          { id: 'GUEST', description: 'Guest' }
-                        ]
-                      });
-                    }
-                  },
-
-                  guestIpType: {
-                    label: 'Guest Type',
-                    select: function(args) {
-                      args.response.success({
-                        data: [
-                          { id: 'Isolated', description: 'Isolated' },
-                          { id: 'Shared', description: 'Shared' }
-                        ]
-                      });
-                    }
-                  },
-
-                  availability: {
-                    label: 'Availability',
-                    select: function(args) {
-                      args.response.success({
-                        data: [
-                          { id: 'Optional', description: 'Optional' },
-                          { id: 'Required', description: 'Required' },
-                          { id: 'Unavailable', description: 'Unavailable' }
-                        ]
-                      });
-                    }
-                  },
-
-                  serviceOfferingId: {
-                    label: 'Service Offering',
-                    select: function(args) {
-                      $.ajax({
-                        url: createURL('listServiceOfferings&issystem=true'),
-                        dataType: 'json',
-                        async: true,
-                        success: function(data) {
-                          var serviceOfferings = data.listserviceofferingsresponse.serviceoffering;
-
-                          args.response.success({
-                            data: $.merge(
-                              [{
-                                id: null,
-                                description: 'None'
-                              }],
-                              $.map(serviceOfferings, function(elem) {
-                                return {
-                                  id: elem.id,
-                                  description: elem.name
-                                };
-                              })
-                            )
-                          });
-                        },
-                        error: function(data) {
-                          args.response.error(parseXMLHttpResponse(data));
-                        }
-                      });
-                    }
-                  },
-
-                  specifyVlan: { label: 'Specify VLAN', isBoolean: true },
-								
-									specifyIpRanges: { label: 'Specify IP ranges', isBoolean: true },
-								
-                  supportedServices: {
-                    label: 'Supported Services',
-
-                    dynamic: function(args) {
-                      $.ajax({
-                        url: createURL('listSupportedNetworkServices'),
-                        dataType: 'json',
-                        async: true,
-                        success: function(data) {
-                          var networkServices = data.listsupportednetworkservicesresponse.networkservice;
-                          var fields = {};
-                          $(networkServices).each(function() {
-                            var name = this.name;
-                            var providers = this.provider;
-
-                            var id = {
-                              isEnabled: 'service' + '.' + name + '.' + 'isEnabled',
-                              capabilities: 'service' + '.' + name + '.' + 'capabilities',
-                              provider: 'service' + '.' + name + '.' + 'provider'
-                            };
-
-                            fields[id.isEnabled] = { label: name, isBoolean: true };
-                            fields[id.provider] = {
-                              label: name + ' Provider',
-                              isHidden: true,
-                              dependsOn: id.isEnabled,
-                              select: function(args) {
-                                args.response.success({
-                                  data: $.map(providers, function(provider) {
-                                    return {
-                                      id: provider.name,
-                                      description: provider.name
-                                    };
-                                  })
-                                });
-                              }
-                            };
-                          });
-
-                          args.response.success({
-                            fields: fields
-                          });
-                        },
-                        error: function(data) {
-                          args.response.error(parseXMLHttpResponse(data));
-                        }
-                      });
-                    }
-                  },
-
-                  "service.SourceNat.redundantRouterCapabilityCheckbox" : {
-                    label: "Redundant router capability",
-                    isHidden: true,
-                    dependsOn: 'service.SourceNat.isEnabled',
-                    isBoolean: true
-                  },
-
-                  "service.SourceNat.sourceNatTypeDropdown": {
-                    label: 'Supported Source NAT type',
-                    isHidden: true,
-                    dependsOn: 'service.SourceNat.isEnabled',
-                    select: function(args) {
-                      args.response.success({
-                        data: [
-                          { id: 'peraccount', description: 'Per account'},
-                          { id: 'perzone', description: 'Per zone'},
-                        ]
-                      });
-                    }
-                  },
-									"service.Lb.elasticLbCheckbox" : {
-                    label: "Elastic LB",
-                    isHidden: true,
-                    dependsOn: 'service.Lb.isEnabled',
-                    isBoolean: true
-                  },
-                  "service.Lb.lbIsolationDropdown": {
-                    label: 'LB isolation',
-                    isHidden: true,
-                    dependsOn: 'service.Lb.isEnabled',
-                    select: function(args) {
-                      args.response.success({
-                        data: [
-                          { id: 'dedicated', description: 'Dedicated' },
-                          { id: 'shared', description: 'Shared' }
-                        ]
-                      })
-                    }
-                  },									
-									"service.StaticNat.elasticIpCheckbox" : {
-										label: "Elastic IP",
-										isHidden: true,
-										dependsOn: 'service.StaticNat.isEnabled',
-										isBoolean: true
-									},	
-
-									conservemode: { label: 'Conserve mode', isBoolean: true },
-									
-                  tags: { label: 'Tags' }
-                }
-              },
-
+              },							             
+							
               notification: {
                 poll: function(args) {
                   args.complete({
@@ -1320,106 +1437,10 @@
                   });
                 }
               },
-
+							
               messages: {
                 notification: function(args) {
                   return 'Added network offering';
-                }
-              }
-            },
-
-            enable: {
-              label: 'Enable network offering',
-              messages: {
-                confirm: function(args) {
-                  return 'Are you sure you want to enable this network offering?';
-                },
-                notification: function(args) {
-                  return 'Enabling network offering';
-                }
-              },
-              action: function(args) {
-                $.ajax({
-                  url: createURL("updateNetworkOffering&id=" + args.context.networkOfferings[0].id + "&state=Enabled"),
-                  dataType: "json",
-                  async: true,
-                  success: function(json) {
-                    var item = json.updatenetworkofferingresponse.networkoffering;
-                    args.response.success();
-                  },
-                  error: function(data) {
-                    args.response.error(parseXMLHttpResponse(data));
-                  }
-                });
-              },
-              notification: {
-                poll: function(args) {
-                  args.complete({
-                    data: { state: 'Enabled' }
-                  });
-                }
-              }
-            },
-
-            disable: {
-              label: 'Disable network offering',
-              messages: {
-                confirm: function(args) {
-                  return 'Are you sure you want to disable this network offering?';
-                },
-                notification: function(args) {
-                  return 'Disabling network offering';
-                }
-              },
-              action: function(args) {
-                $.ajax({
-                  url: createURL("updateNetworkOffering&id=" + args.context.networkOfferings[0].id + "&state=Disabled"),
-                  dataType: "json",
-                  async: true,
-                  success: function(json) {
-                    var item = json.updatenetworkofferingresponse.networkoffering;
-                    args.response.success();
-                  },
-                  error: function(data) {
-                    args.response.error(parseXMLHttpResponse(data));
-                  }
-                });
-              },
-              notification: {
-                poll: function(args) {
-                  args.complete({ data: { state: 'Disabled' }});
-                }
-              }
-            },
-
-            destroy: {
-              label: 'Remove network offering',
-              action: function(args) {
-                $.ajax({
-                  url: createURL('deleteNetworkOffering'),
-                  data: {
-                    id: args.context.networkOfferings[0].id
-                  },
-                  success: function(json) {
-                    args.response.success();
-                  },
-                  error: function(data) {
-                    args.response.error(parseXMLHttpResponse(data));
-                  }
-                });
-              },
-              messages: {
-                confirm: function() { return 'Are you sure you want to remove this network offering?'; },
-                notification: function() { return 'Remove network offering'; }
-              },
-              notification: {
-                poll: function(args) {
-                  args.complete({
-                    data: {
-                      state: 'Destroyed'
-                    },
-                    actionFilter: networkOfferingActionfilter
-                  });
                 }
               }
             }
@@ -1429,7 +1450,35 @@
 
           detailView: {
             name: 'Network offering details',
-            actions: {
+            actions: {						
+							edit: {
+                label: 'Edit',
+                action: function(args) {
+                  var array1 = [];
+                  array1.push("&name=" + todb(args.data.name));
+                  array1.push("&displaytext=" + todb(args.data.displaytext));
+									array1.push("&availability=" + args.data.availability);								
+                  $.ajax({
+                    url: createURL("updateNetworkOffering&id=" + args.context.networkOfferings[0].id + array1.join("")),
+                    dataType: "json",
+                    success: function(json) {										 									
+											//if availability is being updated from Required to Optional
+										  if(args.context.networkOfferings[0].availability == "Required" && args.data.availability == "Optional") 
+										    requiredNetworkOfferingExists = false;											
+											//if availability is being updated from Optional to Required
+										  if(args.context.networkOfferings[0].availability == "Optional" && args.data.availability == "Required") 
+										    requiredNetworkOfferingExists = true;
+																							
+                      var item = json.updatenetworkofferingresponse.networkoffering;											
+                      args.response.success({data: item});
+                    },
+                    error: function(data) {
+                      args.response.error(parseXMLHttpResponse(data));
+                    }
+                  });
+                }
+              },
+												
               enable: {
                 label: 'Enable network offering',
                 messages: {
@@ -1502,7 +1551,10 @@
                     data: {
                       id: args.context.networkOfferings[0].id
                     },
-                    success: function(json) {
+                    success: function(json) {			
+											if(args.context.networkOfferings[0].availability == "Required") 
+												requiredNetworkOfferingExists = false; //since only one or zero Required network offering can exist
+																				
                       args.response.success();
                     },
                     error: function(data) {
@@ -1533,7 +1585,8 @@
                 fields: [
                   {
                     name: {
-                      label: 'Name'
+                      label: 'Name',
+                      isEditable: true
                     }
                   },
                   {
@@ -1557,8 +1610,8 @@
                         args.response.success({data: items});
                       }
                     },
-                    isdefault: {
-                      label: 'Default',
+                    isdefault: { //created by system by default
+                      label: 'Created by system',
                       converter: cloudStack.converters.toBooleanText
                     },
                     specifyvlan: {
@@ -1651,17 +1704,21 @@
   var networkOfferingActionfilter = function(args) {
     var jsonObj = args.context.item;
 
-    if (jsonObj.state == 'Destroyed' || jsonObj.isdefault) {
+    if (jsonObj.state == 'Destroyed') 
       return [];
-    }
+    
+    var allowedActions = [];
+    allowedActions.push("edit");	
 
-    var allowedActions = ['destroy'];
-    allowedActions.push("edit");
     if(jsonObj.state == "Enabled")
-      allowedActions.push("disable");
-    else if(jsonObj.state == "Disabled")
-      allowedActions.push("enable");
-    return allowedActions;
+			allowedActions.push("disable");
+		else if(jsonObj.state == "Disabled")
+			allowedActions.push("enable");
+		
+		if(jsonObj.isdefault == false) 
+			allowedActions.push("destroy");		
+			
+    return allowedActions;		
   };
 
 })(cloudStack, jQuery);

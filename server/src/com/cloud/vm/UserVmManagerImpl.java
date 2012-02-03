@@ -119,6 +119,7 @@ import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
 import com.cloud.hypervisor.dao.HypervisorCapabilitiesDao;
 import com.cloud.network.IPAddressVO;
+import com.cloud.network.LoadBalancerVMMapVO;
 import com.cloud.network.Network;
 import com.cloud.network.Network.Provider;
 import com.cloud.network.Network.Service;
@@ -138,7 +139,9 @@ import com.cloud.network.router.VirtualNetworkApplianceManager;
 import com.cloud.network.rules.FirewallManager;
 import com.cloud.network.rules.FirewallRule;
 import com.cloud.network.rules.FirewallRuleVO;
+import com.cloud.network.rules.PortForwardingRuleVO;
 import com.cloud.network.rules.RulesManager;
+import com.cloud.network.rules.dao.PortForwardingRulesDao;
 import com.cloud.network.security.SecurityGroup;
 import com.cloud.network.security.SecurityGroupManager;
 import com.cloud.network.security.SecurityGroupVMMapVO;
@@ -273,6 +276,8 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
     protected LoadBalancerVMMapDao _loadBalancerVMMapDao = null;
     @Inject
     protected LoadBalancerDao _loadBalancerDao = null;
+    @Inject
+    protected PortForwardingRulesDao _portForwardingDao;
     @Inject
     protected IPAddressDao _ipAddressDao = null;
     @Inject
@@ -3276,32 +3281,29 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
         if (oldAccount.getAccountId() == newAccount.getAccountId()){
        	    throw new InvalidParameterValueException("The account should be same domain for moving VM between two accounts. Account id =" + oldAccount.getAccountId());
         }
+
         
-        // don't allow to move the vm if there are existing PF/LB/Static Nat rules, existing Security groups or vm is assigned to static Nat ip
+        // don't allow to move the vm if there are existing PF/LB/Static Nat rules, or vm is assigned to static Nat ip
+        List<PortForwardingRuleVO> pfrules = _portForwardingDao.listByVm(cmd.getVmId());
+        if (pfrules != null && pfrules.size() > 0){
+        	throw new InvalidParameterValueException("Remove the Port forwarding rules for this VM before assigning to another user.");
+        }
+        List<FirewallRuleVO> snrules = _rulesDao.listStaticNatByVmId(vm.getId());
+        if (snrules != null && snrules.size() > 0){
+        	throw new InvalidParameterValueException("Remove the StaticNat rules for this VM before assigning to another user.");
+        }
+        List<LoadBalancerVMMapVO> maps = _loadBalancerVMMapDao.listByInstanceId(vm.getId());
+        if (maps != null && maps.size() > 0) {
+        	throw new InvalidParameterValueException("Remove the load balancing rules for this VM before assigning to another user.");
+        }
+        // check for one on one nat
         IPAddressVO ip = _ipAddressDao.findByAssociatedVmId(cmd.getVmId());
         if (ip != null){
-	        List<FirewallRuleVO> firewall_rules = _rulesDao.listByIpAndPurposeAndNotRevoked(ip.getId(), FirewallRule.Purpose.Firewall);
-	        if (firewall_rules.size() > 0){
-	        	throw new InvalidParameterValueException("Remove the Firewall rules for this VM before assigning to another user.");
-	        }
-	        List<FirewallRuleVO> lb_rules = _rulesDao.listByIpAndPurposeAndNotRevoked(ip.getId(), FirewallRule.Purpose.LoadBalancing);
-	        if (lb_rules.size() > 0){
-	        	throw new InvalidParameterValueException("Remove the LoadBalancing rules for this VM before assigning to another user.");
-	        }
-	        List<FirewallRuleVO> nat_rules = _rulesDao.listByIpAndPurposeAndNotRevoked(ip.getId(), FirewallRule.Purpose.StaticNat);
-	        if (nat_rules.size() > 0){
-	        	throw new InvalidParameterValueException("Remove the StaticNat rules for this VM before assigning to another user.");
-	        }
-	        List<FirewallRuleVO> vpn_rules = _rulesDao.listByIpAndPurposeAndNotRevoked(ip.getId(), FirewallRule.Purpose.Vpn);
-	        if (vpn_rules.size() > 0){
-	        	throw new InvalidParameterValueException("Remove the Vpn rules for this VM before assigning to another user.");
-	        }
-	        List<SecurityGroupVMMapVO> securityGroupsToVmMap = _securityGroupVMMapDao.listByInstanceId(cmd.getVmId());
-	        if (securityGroupsToVmMap.size() > 0){
-	        	throw new InvalidParameterValueException("Remove the VM from security groups before assigning to another user.");
-	        }
+        	if (ip.isOneToOneNat()){
+        		throw new InvalidParameterValueException("Remove the one to one nat rule for this VM for ip " + ip.toString());
+        	}
         }
-
+        
         DataCenterVO zone = _dcDao.findById(vm.getDataCenterIdToDeployIn());
     
         //Remove vm from instance group
@@ -3425,9 +3427,11 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
             _networkMgr.allocate(vmProfile, networks);
 
             _securityGroupMgr.addInstanceToGroups(vm.getId(), securityGroupIdList);
+            
+            s_logger.debug("AssignVM: Basic zone, adding security groups no " +  securityGroupIdList.size() + " to " + vm.getInstanceName() );
         } else {
             if (zone.isSecurityGroupEnabled())  {
-            	throw new InvalidParameterValueException("not yet tested for SecurityGroupEnabled advanced networks.");
+            	throw new InvalidParameterValueException("Not yet implemented for SecurityGroupEnabled advanced networks.");
             } else {
                 if (securityGroupIdList != null && !securityGroupIdList.isEmpty()) {
                     throw new InvalidParameterValueException("Can't move vm with security groups; security group feature is not enabled in this zone");
@@ -3499,8 +3503,10 @@ public class UserVmManagerImpl implements UserVmManager, UserVmService, Manager 
                 VMInstanceVO vmi = _itMgr.findByIdAndType(vm.getType(), vm.getId());
                 VirtualMachineProfileImpl<VMInstanceVO> vmProfile = new VirtualMachineProfileImpl<VMInstanceVO>(vmi);
                 _networkMgr.allocate(vmProfile, networks);
+                s_logger.debug("AssignVM: Advance virtual, adding networks no " +  networks.size() + " to " + vm.getInstanceName() );
             } //END IF NON SEC GRP ENABLED
         } // END IF ADVANCED
+        s_logger.info("AssignVM: vm " + vm.getInstanceName() + " now belongs to account " + cmd.getAccountName());
         return vm;
     }
 

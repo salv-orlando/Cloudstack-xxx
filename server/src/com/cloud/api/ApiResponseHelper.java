@@ -893,8 +893,17 @@ public class ApiResponseHelper implements ResponseGenerator {
         	zoneResponse.setCapacitites(new ArrayList<CapacityResponse>(capacityResponses));
         }
         
+        //set network domain info
         zoneResponse.setDomain(dataCenter.getDomain());
-        zoneResponse.setDomainId(dataCenter.getDomainId());
+        
+        //set domain info
+        Long domainId = dataCenter.getDomainId();
+        if (domainId != null) {
+        	 Domain domain = ApiDBUtils.findDomainById(domainId);
+             zoneResponse.setDomainId(domain.getId());
+             zoneResponse.setDomainName(domain.getName());
+        }
+       
         zoneResponse.setType(dataCenter.getNetworkType().toString());
         zoneResponse.setAllocationState(dataCenter.getAllocationState().toString());
         zoneResponse.setZoneToken(dataCenter.getZoneToken());
@@ -1231,10 +1240,7 @@ public class ApiResponseHelper implements ResponseGenerator {
 
             if (userVm.getDisplayName() != null) {
                 userVmResponse.setDisplayName(userVm.getDisplayName());
-            } else {
-                userVmResponse.setDisplayName(userVm.getHostName());
             }
-            
 
             if (userVm.getPassword() != null) {
                 userVmResponse.setPassword(userVm.getPassword());
@@ -1281,7 +1287,7 @@ public class ApiResponseHelper implements ResponseGenerator {
                         host = ApiDBUtils.findHostById(userVm.getHostId());
                         hosts.put(host.getId(), host);
                     }
-                    if (host.getStatus() == com.cloud.host.Status.Alert) {
+                    if (host.getStatus() != com.cloud.host.Status.Up) {
                     	userVmResponse.setState(VirtualMachine.State.Unknown.toString());
                     } else {
                     	userVmResponse.setState(userVm.getState().toString());
@@ -1611,7 +1617,7 @@ public class ApiResponseHelper implements ResponseGenerator {
                         vmResponse.setLinkLocalIp(singleNicProfile.getIp4Address());
                         vmResponse.setLinkLocalMacAddress(singleNicProfile.getMacAddress());
                         vmResponse.setLinkLocalNetmask(singleNicProfile.getNetmask());
-                    } else {
+                    } else if (network.getTrafficType() == TrafficType.Public){
                         vmResponse.setPublicIp(singleNicProfile.getIp4Address());
                         vmResponse.setPublicMacAddress(singleNicProfile.getMacAddress());
                         vmResponse.setPublicNetmask(singleNicProfile.getNetmask());
@@ -2858,8 +2864,6 @@ public class ApiResponseHelper implements ResponseGenerator {
         }
         if (userVm.getDisplayName() != null) {
             userVmData.setDisplayName(userVm.getDisplayName());
-        } else {
-            userVmData.setDisplayName(userVm.getHostName());
         } 
         userVmData.setDomainId(userVm.getDomainId());
 
@@ -3008,7 +3012,6 @@ public class ApiResponseHelper implements ResponseGenerator {
         
         response.setDomainId(domain.getId());
         response.setDomainName(domain.getName());
-        
     }
     
     @Override 
@@ -3135,6 +3138,11 @@ public class ApiResponseHelper implements ResponseGenerator {
         List<? extends Network.Provider> serviceProviders = ApiDBUtils.getProvidersForService(service);
         List<ProviderResponse> serviceProvidersResponses = new ArrayList<ProviderResponse>();
         for (Network.Provider serviceProvider : serviceProviders) {
+        	//return only Virtual Router as a provider for the firewall
+        	if (service == Service.Firewall && !(serviceProvider == Provider.VirtualRouter)) {
+        		continue;
+        	} 
+        	
             ProviderResponse serviceProviderResponse = createServiceProviderResponse(serviceProvider);
             serviceProvidersResponses.add(serviceProviderResponse);
         }

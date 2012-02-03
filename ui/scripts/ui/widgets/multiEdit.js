@@ -93,7 +93,16 @@
 
               $td.append($('<span>').html(start + ' - ' + end));
             } else {
-              $td.append($('<span>').html(data[fieldName]));
+              var maxLengths = data['_maxLength'];
+              
+              if (maxLengths &&
+                  maxLengths[fieldName] &&
+                  data[fieldName].length >= maxLengths[fieldName]) {
+                $td.append($('<span>').html(data[fieldName].toString().substr(0, maxLengths[fieldName] - 3).concat('...')));
+              } else {
+                $td.append($('<span>').html(data[fieldName]));
+              }
+              $td.attr('title', data[fieldName]);
             }
           } else if (field.select) {
             $td.append($('<span>').html(
@@ -225,7 +234,7 @@
                       $('.notifications').notifications('add', {
                         section: 'network',
                         desc: notification.label,
-                        interval: 500,
+                        interval: 3000,
                         _custom: _custom,
                         poll: function(args) {
                           var complete = args.complete;
@@ -710,6 +719,13 @@
 
         // Clear out fields
         $multi.find('input').val('');
+        $multi.find('tbody td').each(function() {
+          var $item = $(this);
+
+          if ($item.data('multi-custom-data')) {
+            $item.data('multi-custom-data', null);
+          }
+        });
 
         // Apply action
         args.add.action({
@@ -723,7 +739,7 @@
                 $('.notifications').notifications('add', {
                   section: 'network',
                   desc: notification.label,
-                  interval: 500,
+                  interval: 3000,
                   _custom: successArgs._custom,
                   poll: function(pollArgs) {
                     var complete = pollArgs.complete;

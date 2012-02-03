@@ -150,7 +150,6 @@ import com.cloud.utils.StringUtils;
 import com.cloud.utils.component.Adapters;
 import com.cloud.utils.component.ComponentLocator;
 import com.cloud.utils.component.Inject;
-import com.cloud.utils.crypt.DBEncryptionUtil;
 import com.cloud.utils.db.DB;
 import com.cloud.utils.db.Filter;
 import com.cloud.utils.db.SearchCriteria;
@@ -2253,11 +2252,9 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
             throw new InvalidParameterValueException("Please specify a valid zone.");
         }
         
-        PhysicalNetworkVO pNtwk;
-        if (physicalNetworkId == null || ((pNtwk = _physicalNetworkDao.findById(physicalNetworkId)) == null)) {
+        if (physicalNetworkId == null || ((_physicalNetworkDao.findById(physicalNetworkId)) == null)) {
             throw new InvalidParameterValueException("Please specify a valid physical network.");
         }
-        
 
         // Allow adding untagged direct vlan only for Basic zone
         if (zone.getNetworkType() == NetworkType.Advanced && vlanId.equals(Vlan.UNTAGGED) && (!forVirtualNetwork || zone.isSecurityGroupEnabled())) {
@@ -2892,7 +2889,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
                 }
                 return;
             } else {
-                throw new PermissionDeniedException("Access denied to " + caller + " by " + checker.getName());
+                throw new PermissionDeniedException("Access denied to " + caller + " by " + checker.getName() + " for zone " + zone.getId());
             }
         }
 
@@ -3017,6 +3014,12 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
                         if (provider == null) {
                             throw new InvalidParameterValueException("Invalid service provider: " + prvNameStr);
                         }
+                        
+                        //Only VirtualRouter can be specified as a firewall provider
+                        if (service == Service.Firewall && provider != Provider.VirtualRouter) {
+                        	throw new InvalidParameterValueException("Only Virtual router can be specified as a provider for the Firewall service");
+                        }
+                        
                         providers.add(provider);
                         
                         Set<Service> serviceSet = null;
@@ -3154,6 +3157,20 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         String multicastRateStr = _configDao.getValue("multicast.throttling.rate");
         int multicastRate = ((multicastRateStr == null) ? 10 : Integer.parseInt(multicastRateStr));
         tags = cleanupTags(tags);
+        
+        //specifyIpRanges should always be true for Shared network offerings
+        if (!specifyIpRanges && type == GuestType.Shared) {
+        	throw new InvalidParameterValueException("SpecifyIpRanges should be true if network offering's type is " + type);
+        }
+        
+        //specifyVlan should always be true for Shared network offerings and Isolated network offerings with specifyIpRanges = true
+        if (!specifyVlan) {
+        	if (type == GuestType.Shared) {
+            	throw new InvalidParameterValueException("SpecifyVlan should be true if network offering's type is " + type);
+            } else if (specifyIpRanges) {
+            	throw new InvalidParameterValueException("SpecifyVlan should be true if network offering has specifyIpRanges=true");
+            }
+        }
         
         //validate availability value
         if (availability == NetworkOffering.Availability.Required) {
@@ -3509,14 +3526,14 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
                 throw new InvalidParameterValueException("Invalid value for Availability. Supported types: " + Availability.Required + ", " + Availability.Optional);
             } else {
             	if (availability == NetworkOffering.Availability.Required) {
-	            	boolean canOffBeRequired = (offering.getGuestType() == GuestType.Isolated && _networkMgr.areServicesSupportedByNetworkOffering(offering.getId(), Service.SourceNat));
+	            	boolean canOffBeRequired = (offeringToUpdate.getGuestType() == GuestType.Isolated && _networkMgr.areServicesSupportedByNetworkOffering(offeringToUpdate.getId(), Service.SourceNat));
 	                if (!canOffBeRequired) {
 	                	throw new InvalidParameterValueException("Availability can be " + NetworkOffering.Availability.Required + " only for networkOfferings of type " + GuestType.Isolated + " and with " + Service.SourceNat.getName() + " enabled");
 	                }
 	                
 	                //only one network offering in the system can be Required
 	                List<NetworkOfferingVO> offerings = _networkOfferingDao.listByAvailability(Availability.Required, false);
-	                if (!offerings.isEmpty() || offerings.get(0).getId() != offering.getId()) {
+	                if (!offerings.isEmpty() && offerings.get(0).getId() != offeringToUpdate.getId()) {
 	                	throw new InvalidParameterValueException("System already has network offering id=" + offerings.get(0).getId() + " with availability " + Availability.Required);
 	                }
             	}

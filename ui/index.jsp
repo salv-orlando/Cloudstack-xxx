@@ -183,8 +183,7 @@
             <div class="network" wizard-step-id="network">
               <!-- 5a: Network description -->
               <div class="wizard-step-conditional nothing-to-select">
-                <p>Either you select a basic zone whose guest network does not include security group service or your selected hypervisor does not have any additional network features or you don't have any zone that has security group enabled.</p>
-                <p>Thus, no additional network features.</p>
+                <p>The zone you selected does not have any choices for network selection</p>               
                 <p>Please proceed to the next step.</p>
               </div>
 
@@ -485,7 +484,7 @@
                 <li class="management">
                   <ul class="container">
                     <li traffic-type-id="management"
-                        title="Traffic between the internet and virtual machines in the cloud."
+                        title="Traffic between CloudStack's internal resources, including any components that communicate with the Management Server, such as hosts and CloudStack system VMs"
                         class="traffic-type-draggable management"></li>
                   </ul>
                   <div class="info">
@@ -496,7 +495,7 @@
                 <li class="public">
                   <ul class="container">
                     <li traffic-type-id="public"
-                        title="Traffic between CloudStack's internal resources, including any components that communicate with the Management Server, such as hosts and CloudStack system VMs"
+                        title="Traffic between the internet and virtual machines in the cloud."
                         class="traffic-type-draggable public"></li>
                   </ul>
                   <div class="info">
@@ -1062,7 +1061,7 @@
             <div class="button view-all">view all</div>
           </div>
           <ul data-item="alerts">
-            <li class="error" concat-value="true">
+            <li class="error" concat-value="50">
               <div class="content">
                 <span class="title" data-list-item="name">Alert 1</span>
                 <p data-list-item="description">Alert 1</p>
@@ -1078,7 +1077,7 @@
             <div class="button view-all">view all</div>
           </div>
           <ul data-item="hostAlerts">
-            <li class="error" concat-value="true">
+            <li class="error" concat-value="50">
               <div class="content">
                 <span class="title" data-list-item="name">Alert 1</span>
                 <p data-list-item="description">Alert 1</p>
@@ -1109,7 +1108,7 @@
           <!-- Zone stat charts -->
           <div class="zone-stats">
             <ul data-item="zoneCapacities">
-              <li>
+              <li concat-value="25">
                 <div class="label">
                   Zone: <span data-list-item="zoneName"></span>
                 </div>
@@ -1156,47 +1155,28 @@
 
         <div class="status-lists">
           <ul>
-            <li class="recent-errors">
+            <li class="events">
               <table>
                 <thead>
                   <tr>
-                    <th>My Projects</th>
+                    <th>Latest events <div class="button view-all events">view all</div></th>
                   </tr>
                 </thead>
               </table>
               <div class="content">
-                <table>
-                  <tbody>
-                    <tr><td class="desc"></td><td class="value"></td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </li>
-            <li class="my-account">
-              <table>
-                <thead>
-                  <tr>
-                    <th>My Account</th>
-                  </tr>
-                </thead>
-              </table>
-              <div class="content">
-                <table>
-                  <tbody>
-                    <tr class="odd"><td class="desc">Account</td><td class="value" data-item="accountName"></td></tr>
-                    <tr><td class="desc">User</td><td class="value" data-item="userName"></td></tr>
-                    <tr class="odd"><td class="desc">Role</td><td class="value" data-item="accountType"></td></tr>
-                    <tr><td class="desc">Account ID</td><td class="value" data-item="accountID"></td></tr>
-                    <tr class="odd"><td class="desc">Domain ID</td><td class="value" data-item="accountDomainID"></td></tr>
-                  </tbody>
-                </table>
+                <ul data-item="events">
+                  <li data-list-item="description">
+                    <div class="title" data-list-item="type"></div>
+                    <span data-list-item="description"></span>
+                  </li>
+                </ul>
               </div>
             </li>
             <li class="ip-addresses">
               <table>
                 <thead>
                   <tr>
-                    <th>IP Addresses</th>
+                    <th>Network <div class="button view-all network">view all</div></th>
                   </tr>
                 </thead>
               </table>
@@ -1204,14 +1184,14 @@
                 <tbody>
                   <tr>
                     <td>
-                      <div class="desc"><span>Available public IP addresses:</span></div>
-                      <div class="value"><span>18</span></div>
+                      <div class="desc"><span>Owned isolated networks:</span></div>
+                      <div class="value"><span data-item="netTotal"></span></div>
                     </td>
                   </tr>
                   <tr class="odd">
                     <td>
                       <div class="desc"><span>Owned public IP addresses:</span></div>
-                      <div class="value"><span>03</span></div>
+                      <div class="value"><span data-item="ipTotal"></span></div>
                     </td>
                   </tr>
                 </tbody>

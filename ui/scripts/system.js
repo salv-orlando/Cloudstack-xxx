@@ -5,6 +5,57 @@
   var naasStatusMap = {};
   var nspMap = {};
 
+  var getTrafficType = function(physicalNetwork, typeID) {
+    var trafficType = {};
+
+    $.ajax({
+      url: createURL('listTrafficTypes'),
+      data: {
+        physicalnetworkid: physicalNetwork.id
+      },
+      async: false,
+      success: function(json) {
+        trafficType = $.grep(
+          json.listtraffictypesresponse.traffictype,
+          function(trafficType) {
+            return trafficType.traffictype == typeID;
+          }
+        )[0];
+      }
+    });
+
+    return trafficType;
+  };
+
+  var updateTrafficLabels = function(trafficType, labels, complete) {
+    $.ajax({
+      url: createURL('updateTrafficType'),
+      data: {
+        id: trafficType.id,
+        xennetworklabel: labels.xennetworklabel,
+        kvmnetworklabel: labels.kvmnetworklabel,
+        vmwarenetworklabel: labels.vmwarenetworklabel
+      },
+      success: function(json) {
+        var jobID = json.updatetraffictyperesponse.jobid;
+
+        cloudStack.ui.notifications.add(
+          {
+            desc: 'Update traffic labels',
+            poll: pollAsyncJobResult,
+            section: 'System',
+            _custom: { jobId: jobID }
+          },
+          complete ? complete : function() {}, {},
+          function(data) {
+            // Error
+            cloudStack.dialog.notice({ message: parseXMLHttpResponse(data) });
+          }, {}
+        );
+      }
+    })
+  };
+
   function virtualRouterProviderActionFilter(args) {
     var allowedActions = [];
     var jsonObj = nspMap["virtualRouter"];
@@ -204,7 +255,21 @@
       mainNetworks: {
         'public': {
           detailView: {
-            actions: {},
+            actions: {
+              edit: {
+                label: 'Edit',
+                action: function(args) {
+                  var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Public');
+
+                  updateTrafficLabels(trafficType, args.data, function () {
+                    args.response.success();
+                  });
+                },
+                messages: {
+                  notification: 'Updated public traffic type'
+                }
+              }
+            },
             tabs: {
               details: {
                 title: 'Details',
@@ -212,6 +277,11 @@
                   {
                     traffictype: { label: 'Traffic type' },
                     broadcastdomaintype: { label: 'Broadcast domain type' }
+                  },
+                  {
+                    xennetworklabel: { label: 'Xen traffic label', isEditable: true },
+                    kvmnetworklabel: { label: 'KVM traffic label', isEditable: true },
+                    vmwarenetworklabel: { label: 'VMware traffic label', isEditable: true }
                   }
                 ],
 
@@ -221,8 +291,16 @@
                     dataType: "json",
                     async: false,
                     success: function(json) {
+                      var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Public');
                       var items = json.listnetworksresponse.network;
+
                       selectedPublicNetworkObj = items[0];
+
+                      // Include traffic labels
+                      selectedPublicNetworkObj.xennetworklabel = trafficType.xennetworklabel;
+                      selectedPublicNetworkObj.kvmnetworklabel = trafficType.kvmnetworklabel;
+                      selectedPublicNetworkObj.vmwarenetworklabel = trafficType.vmwarenetworklabel;
+
                       args.response.success({data: selectedPublicNetworkObj});
                     }
                   });
@@ -328,7 +406,21 @@
 
         'storage': {
           detailView: {
-            actions: {},
+            actions: {
+              edit: {
+                label: 'Edit',
+                action: function(args) {
+                  var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Storage');
+
+                  updateTrafficLabels(trafficType, args.data, function () {
+                    args.response.success();
+                  });
+                },
+                messages: {
+                  notification: 'Updated storage traffic type'
+                }
+              }
+            },
             tabs: {
               details: {
                 title: 'Details',
@@ -336,6 +428,11 @@
                   {
                     traffictype: { label: 'Traffic type' },
                     broadcastdomaintype: { label: 'Broadcast domain type' }
+                  },
+                  {
+                    xennetworklabel: { label: 'Xen traffic label', isEditable: true },
+                    kvmnetworklabel: { label: 'KVM traffic label', isEditable: true },
+                    vmwarenetworklabel: { label: 'VMware traffic label', isEditable: true }
                   }
                 ],
 
@@ -346,7 +443,13 @@
                     async: false,
                     success: function(json) {
                       var items = json.listnetworksresponse.network;
+                      var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Storage');
                       selectedPublicNetworkObj = items[0];
+
+                      selectedPublicNetworkObj.xennetworklabel = trafficType.xennetworklabel;
+                      selectedPublicNetworkObj.kvmnetworklabel = trafficType.kvmnetworklabel;
+                      selectedPublicNetworkObj.vmwarenetworklabel = trafficType.vmwarenetworklabel;
+
                       args.response.success({data: selectedPublicNetworkObj});
                     }
                   });
@@ -451,7 +554,22 @@
         },
 
         'management': {
-          detailView: {  
+          detailView: {
+            actions: {
+              edit: {
+                label: 'Edit',
+                action: function(args) {
+                  var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Management');
+
+                  updateTrafficLabels(trafficType, args.data, function () {
+                    args.response.success();
+                  });
+                },
+                messages: {
+                  notification: 'Updated management traffic type'
+                }
+              }
+            },
             tabs: {
               details: {
                 title: 'Details',
@@ -459,6 +577,11 @@
                   {
                     traffictype: { label: 'Traffic type' },
                     broadcastdomaintype: { label: 'Broadcast domain type' }
+                  },
+                  {
+                    xennetworklabel: { label: 'Xen traffic label', isEditable: true },
+                    kvmnetworklabel: { label: 'KVM traffic label', isEditable: true },
+                    vmwarenetworklabel: { label: 'VMware traffic label', isEditable: true }
                   }
                 ],
                 dataProvider: function(args) {                  
@@ -467,6 +590,13 @@
                     dataType: "json",
                     success: function(json) {                      
                       selectedManagementNetworkObj =json.listnetworksresponse.network[0];
+
+                      var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Management');
+
+                      selectedManagementNetworkObj.xennetworklabel = trafficType.xennetworklabel;
+                      selectedManagementNetworkObj.kvmnetworklabel = trafficType.kvmnetworklabel;
+                      selectedManagementNetworkObj.vmwarenetworklabel = trafficType.vmwarenetworklabel;
+
                       args.response.success({ data: selectedManagementNetworkObj });                      
                     }
                   });                
@@ -522,11 +652,20 @@
                   else
                     vlan = args.data.startVlan + "-" + args.data.endVlan;
                   $.ajax({
-                    url: createURL("updatePhysicalNetwork&id=" + selectedPhysicalNetworkObj.id + "&vlan=" + todb(vlan)),
+                    url: createURL("updatePhysicalNetwork"),
+                    data: {
+                      id: selectedPhysicalNetworkObj.id,
+                      vlan: todb(vlan)
+                    },
                     dataType: "json",
                     success: function(json) {
                       var jobId = json.updatephysicalnetworkresponse.jobid;
-                      args.response.success({ _custom: { jobId: jobId }});
+
+                      var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Guest');
+
+                      updateTrafficLabels(trafficType, args.data, function() {
+                        args.response.success({ _custom: { jobId: jobId }});
+                      });
                     }
                   });
                 },
@@ -566,11 +705,20 @@
                       isEditable: true
                     },
                     broadcastdomainrange: { label: 'Broadcast domain range' }                    
+                  },
+                  {
+                    xennetworklabel: { label: 'Xen traffic label', isEditable: true },
+                    kvmnetworklabel: { label: 'KVM traffic label', isEditable: true },
+                    vmwarenetworklabel: { label: 'VMware traffic label', isEditable: true }
                   }
                 ],
                 dataProvider: function(args) {                  
                   var startVlan, endVlan;
                   var vlan = selectedPhysicalNetworkObj.vlan;
+                  var xentrafficlabel, kvmtrafficlabel, vmwaretrafficlabel;
+
+                  // Get traffic label data
+                  var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Guest');
 
                   if(vlan != null && vlan.length > 0) {
                     if(vlan.indexOf("-") != -1) {
@@ -583,6 +731,9 @@
                     }
                     selectedPhysicalNetworkObj["startVlan"] = startVlan;
                     selectedPhysicalNetworkObj["endVlan"] = endVlan;
+                    selectedPhysicalNetworkObj["xennetworklabel"] = trafficType.xennetworklabel;
+                    selectedPhysicalNetworkObj["kvmnetworklabel"] = trafficType.kvmnetworklabel;
+                    selectedPhysicalNetworkObj["vmwarenetworklabel"] = trafficType.vmwarenetworklabel;
                   }
 
                   args.response.success({
@@ -726,19 +877,19 @@
                   },
                   actions: {
                     add: {
-                      label: 'Create network',
+                      label: 'Add guest network',
 
                       messages: {
                         confirm: function(args) {
-                          return 'Are you sure you want to create a network?';
+                          return 'Please confirm that you want to add a guest network';
                         },
                         notification: function(args) {
-                          return 'Creating new network';
+                          return 'Adding guest network';
                         }
                       },
 
                       createForm: {  
-                        title: 'Create network', //create guest network (only shown in advanced zone)
+                        title: 'Add guest network',  //Add guest network in advanced zone
                         
                         fields: {
                           name: {
@@ -760,6 +911,7 @@
 															array1.push({id: 'zone-wide', description: 'All'});
 															array1.push({id: 'domain-specific', description: 'Domain'});
 															array1.push({id: 'account-specific', description: 'Account'});
+															array1.push({id: 'project-specific', description: 'Project'});
 														
                               args.response.success({data: array1});
 
@@ -767,15 +919,27 @@
                                 var $form = $(this).closest('form');
                                 if($(this).val() == "zone-wide") {
                                   $form.find('.form-item[rel=domainId]').hide();
+                                  $form.find('.form-item[rel=subdomainaccess]').hide();
                                   $form.find('.form-item[rel=account]').hide();
+																	$form.find('.form-item[rel=projectId]').hide();
                                 }
                                 else if ($(this).val() == "domain-specific") {
                                   $form.find('.form-item[rel=domainId]').css('display', 'inline-block');
+                                  $form.find('.form-item[rel=subdomainaccess]').css('display', 'inline-block');
                                   $form.find('.form-item[rel=account]').hide();
+																	$form.find('.form-item[rel=projectId]').hide();
                                 }
                                 else if($(this).val() == "account-specific") {
                                   $form.find('.form-item[rel=domainId]').css('display', 'inline-block');
+                                  $form.find('.form-item[rel=subdomainaccess]').hide();
                                   $form.find('.form-item[rel=account]').css('display', 'inline-block');
+																	$form.find('.form-item[rel=projectId]').hide();
+                                }																
+																else if($(this).val() == "project-specific") {
+                                  $form.find('.form-item[rel=domainId]').css('display', 'inline-block');
+                                  $form.find('.form-item[rel=subdomainaccess]').hide();
+                                  $form.find('.form-item[rel=account]').hide();
+																	$form.find('.form-item[rel=projectId]').css('display', 'inline-block');
                                 }
                               });
                             }
@@ -825,20 +989,40 @@
                               args.response.success({data: items});
                             }
                           },
+                          subdomainaccess: { label: 'Subdomain Access', isBoolean: true, isHidden: true },
                           account: { label: 'Account' },
                           
+													projectId: {
+                            label: 'Project',
+                            validation: { required: true },
+                            select: function(args) {
+                              var items = [];
+                              $.ajax({
+															  url: createURL("listProjects&listAll=true"),
+																dataType: "json",
+																async: false,
+																success: function(json) {	
+																  projectObjs = json.listprojectsresponse.project;
+																  $(projectObjs).each(function() {
+                                    items.push({id: this.id, description: this.name});
+                                  });
+																}
+															});															
+                              args.response.success({data: items});
+                            }
+                          },
+													
                           networkOfferingId: {
                             label: 'Network offering',
                             dependsOn: 'scope',
                             select: function(args) {
                               var array1 = [];
-                              var apiCmd = "listNetworkOfferings&state=Enabled";
-															
+                              var apiCmd = "listNetworkOfferings&state=Enabled&zoneid=" + selectedZoneObj.id; 
+																														
                               //this tab (Network tab in guest network) only shows when it's under an Advanced zone
 															if(args.scope == "zone-wide" || args.scope == "domain-specific") {
 																apiCmd += "&guestiptype=Shared";
-															}
-                              //else, args.scope == "account-specific", displays all network offerings    
+															}                               
                               
                               $.ajax({
                                 url: createURL(apiCmd),
@@ -847,9 +1031,9 @@
                                 success: function(json) {																  
                                   networkOfferingObjs = json.listnetworkofferingsresponse.networkoffering;
                                   if (networkOfferingObjs != null && networkOfferingObjs.length > 0) {
-                                    //for (var i = 0; i < networkOfferingObjs.length; i++) {
-                                    for (var i = (networkOfferingObjs.length-1); i >= 0; i--) {
-                                      if(nspMap["securityGroups"].state == "Disabled"){ //if security groups provider is disabled, exclude network offerings that has "SecurityGroupProvider" in service
+                                    for (var i = 0; i < networkOfferingObjs.length; i++) {
+                                      //if security groups provider is disabled, exclude network offerings that has "SecurityGroupProvider" in service
+                                      if(nspMap["securityGroups"].state == "Disabled"){ 
                                         var includingSGP = false;
                                         var serviceObjArray = networkOfferingObjs[i].service;
                                         for(var k = 0; k < serviceObjArray.length; k++) {
@@ -861,6 +1045,21 @@
                                         if(includingSGP == true)
                                           continue; //skip to next network offering
                                       }
+																																						
+																			//if args.scope == "account-specific" or "project-specific", exclude Isolated network offerings with SourceNat service (bug 12869)																			
+																			if(args.scope == "account-specific" || args.scope == "project-specific") {
+																			  var includingSourceNat = false;
+                                        var serviceObjArray = networkOfferingObjs[i].service;
+                                        for(var k = 0; k < serviceObjArray.length; k++) {
+                                          if(serviceObjArray[k].name == "SourceNat") {
+                                            includingSourceNat = true;
+                                            break;
+                                          }
+                                        }
+                                        if(includingSourceNat == true)
+                                          continue; //skip to next network offering
+																			}		
+																			
                                       array1.push({id: networkOfferingObjs[i].id, description: networkOfferingObjs[i].displaytext});
                                     }
                                   }
@@ -875,6 +1074,7 @@
 																var selectedNetworkOfferingId = $(this).val();													
 																$(networkOfferingObjs).each(function(){																 
 																  if(this.id == selectedNetworkOfferingId) {	
+																	  //networkoffering.specifyipranges
 																		if(this.guestiptype == "Isolated") {
 																			if(this.specifyipranges == false) {
 																				$form.find('.form-item[rel=guestStartIp]').hide();
@@ -888,7 +1088,15 @@
 																		else {  //this.guestiptype == "Shared"
 																			$form.find('.form-item[rel=guestStartIp]').css('display', 'inline-block');
 																			$form.find('.form-item[rel=guestEndIp]').css('display', 'inline-block');
-																		}													
+																		}			
+
+																		//networkoffering.specifyvlan
+																		if(this.specifyvlan == false) {
+																		  $form.find('.form-item[rel=vlanId]').hide();
+																		}
+																		else {
+																		  $form.find('.form-item[rel=vlanId]').css('display', 'inline-block');
+																		}				
 																		return false; //break each loop
 																	}
 																});                                													
@@ -904,44 +1112,53 @@
                         }
                       },
 
-                      action: function(args) {
-                        var array1 = [];
+                      action: function(args) { //Add guest network in advanced zone
+                        var $form = args.$form;
+												
+												var array1 = [];
                         array1.push("&zoneId=" + selectedZoneObj.id);
                         array1.push("&name=" + todb(args.data.name));
                         array1.push("&displayText=" + todb(args.data.description));
                         array1.push("&networkOfferingId=" + args.data.networkOfferingId);
+                      											 
+											  if(($form.find('.form-item[rel=vlanId]').css("display") != "none") && (args.data.vlanId != null && args.data.vlanId.length > 0)) 
+												  array1.push("&vlan=" + todb(args.data.vlanId));                        
+												
+												if($form.find('.form-item[rel=domainId]').css("display") != "none") {
+												  array1.push("&domainId=" + args.data.domainId);
 
-                        if(selectedZoneObj.networktype == "Basic") {
-                          array1.push("&vlan=untagged");
-                        }
-                        else {  //"Advanced"
-                          array1.push("&vlan=" + todb(args.data.vlanId));                        
-
-                          var $form = args.$form;
-                          if($form.find('.form-item[rel=domainId]').css("display") != "none") {
-                            if($form.find('.form-item[rel=account]').css("display") != "none") {  //account-specific
-                              array1.push("&acltype=account");
-                              array1.push("&domainId=" + args.data.domainId);
-                              array1.push("&account=" + args.data.account);
-                            }
-                            else {  //domain-specific
-                              array1.push("&acltype=domain");
-                              array1.push("&domainId=" + args.data.domainId);
-                            }
+                          if ($form.find('.form-item[rel=subdomainaccess]:visible input:checked').size()) {
+                            array1.push("&subdomainaccess=true");
                           }
-                          else { //zone-wide
-                            array1.push("&acltype=domain"); //server-side will make it Root domain (i.e. domainid=1)
-                          }
-                         
-                          array1.push("&gateway=" + args.data.guestGateway);
-                          array1.push("&netmask=" + args.data.guestNetmask);
-                          array1.push("&startip=" + args.data.guestStartIp);
-                          array1.push("&endip=" + args.data.guestEndIp);
+													if($form.find('.form-item[rel=account]').css("display") != "none") {  //account-specific																											
+														array1.push("&account=" + args.data.account);
+														array1.push("&acltype=account");	
+													}												
+													else if($form.find('.form-item[rel=projectId]').css("display") != "none") {  //project-specific																											
+														array1.push("&projectid=" + args.data.projectId);
+														array1.push("&acltype=account");	
+													}													
+													else {  //domain-specific
+														array1.push("&acltype=domain");														
+													}
+												}
+												else { //zone-wide
+													array1.push("&acltype=domain"); //server-side will make it Root domain (i.e. domainid=1)
+												}
+											 											  
+											  if(args.data.guestGateway != null && args.data.guestGateway.length > 0) 
+												  array1.push("&gateway=" + args.data.guestGateway);
+												if(args.data.guestNetmask != null && args.data.guestNetmask.length > 0) 
+												  array1.push("&netmask=" + args.data.guestNetmask);
+																								
+												if(($form.find('.form-item[rel=guestStartIp]').css("display") != "none") && (args.data.guestStartIp != null && args.data.guestStartIp.length > 0)) 
+												  array1.push("&startip=" + args.data.guestStartIp);
+												if(($form.find('.form-item[rel=guestEndIp]').css("display") != "none") && (args.data.guestEndIp != null && args.data.guestEndIp.length > 0)) 
+												  array1.push("&endip=" + args.data.guestEndIp);
 
-                          if(args.data.networkdomain != null && args.data.networkdomain.length > 0)
-                            array1.push("&networkdomain=" + todb(args.data.networkdomain));
-                        }
-
+												if(args.data.networkdomain != null && args.data.networkdomain.length > 0)
+													array1.push("&networkdomain=" + todb(args.data.networkdomain));
+                        
                         $.ajax({
                           url: createURL("createNetwork" + array1.join("")),
                           dataType: "json",
@@ -1072,33 +1289,57 @@
 											}
 										}
 										
-                    $.ajax({
+										//need to make 2 listNetworks API call to get all networks
+										var items = [];
+										$.ajax({
                       url: createURL("listNetworks&listAll=true&trafficType=Guest&zoneId=" + selectedZoneObj.id + "&page=" + args.page + "&pagesize=" + pageSize + array1.join("")),
                       dataType: "json",
+											async: false,
                       success: function(json) {
-                        var items = json.listnetworksresponse.network;
-                                                                      
-                        $(items).each(function(){                          
-                          this.networkdomaintext = this.networkdomain;
-                          this.networkofferingidText = this.networkofferingid;
-                                                    
-                          if(this.acltype == "Domain") {
-                            if(this.domainid == rootAccountId) 
-                              this.scope = "All";                            
-                            else 
-                              this.scope = "Domain (" + this.domain + ")";                            
-                          } 
-                          else if (this.acltype == "Account"){
-                            this.scope = "Account (" + this.domain + ", " + this.account + ")";      
-                          }
-
-                          if(this.vlan == null && this.broadcasturi != null)
-                            this.vlan = this.broadcasturi.replace("vlan://", "");                          
-                        });                        
-                        
-                        args.response.success({data: items});
+											  if(json.listnetworksresponse.network != null && json.listnetworksresponse.network.length > 0)
+												  items = json.listnetworksresponse.network;                                          
                       }
                     });
+										
+										var networkCollectionMap = {};										
+										$(items).each(function() {										 
+										  networkCollectionMap[this.id] = this.name;
+										});
+																			
+										$.ajax({
+                      url: createURL("listNetworks&projectid=-1&trafficType=Guest&zoneId=" + selectedZoneObj.id + "&page=" + args.page + "&pagesize=" + pageSize + array1.join("")),
+                      dataType: "json",
+											async: false,
+                      success: function(json) {
+											  $(json.listnetworksresponse.network).each(function() {														  
+													if((this.id in networkCollectionMap) == false)
+													  items.push(this);													
+												});							
+                      }
+                    });
+										                                            
+										$(items).each(function(){                          
+											this.networkdomaintext = this.networkdomain;
+											this.networkofferingidText = this.networkofferingid;
+																								
+											if(this.acltype == "Domain") {
+												if(this.domainid == rootAccountId) 
+													this.scope = "All";                            
+												else 
+													this.scope = "Domain (" + this.domain + ")";                            
+											} 
+											else if (this.acltype == "Account"){		                           
+												if(this.project != null)
+													this.scope = "Account (" + this.domain + ", " + this.project + ")";     
+												else 														
+													this.scope = "Account (" + this.domain + ", " + this.account + ")";      
+											}
+
+											if(this.vlan == null && this.broadcasturi != null)
+												this.vlan = this.broadcasturi.replace("vlan://", "");                          
+										});                        
+										
+										args.response.success({data: items});
                   },
 
                   detailView: {
@@ -1311,9 +1552,9 @@
                               label: 'Network offering',
                               isEditable: true,
                               select: function(args){
-                                var items = [];
+                                var items = [];															
                                 $.ajax({
-                                  url: createURL("listNetworkOfferings&networkid=" + selectedGuestNetworkObj.id),
+                                  url: createURL("listNetworkOfferings&state=Enabled&networkid=" + selectedGuestNetworkObj.id + "&zoneid=" + selectedGuestNetworkObj.zoneid),
                                   dataType: "json",
                                   async: false,
                                   success: function(json) {
@@ -1351,7 +1592,14 @@
                             networkdomain: {
                               label: 'Network domain',
                               isEditable: true
-                            }
+                            },
+														
+														domain: { label: 'Domain' },
+                            subdomainaccess: { label: 'Subdomain Access?', converter: function(data) {
+                              return data ? 'Yes' : 'No';
+                            } },
+														account: { label: 'Account' },
+														project: { label: 'Project' }														
                           }
                         ],
                         dataProvider: function(args) {    
@@ -2820,9 +3068,9 @@
               enableSwift: {
                 label: 'Configure Swift',
                 isHeader: true,
+                addRow: false,
                 preFilter: function(args) {
                   var swiftEnabled = false;
-                  
                   $.ajax({
                     url: createURL('listConfigurations'),
                     data: {
@@ -2830,8 +3078,12 @@
                     },
                     async: false,
                     success: function(json) {
-                      swiftEnabled = json.listconfigurationsresponse.configuration[0].value == 'true' ?
+                      swiftEnabled = json.listconfigurationsresponse.configuration[0].value == 'true' && !havingSwift ?
                         true : false;
+                    },
+
+                    error: function(json) {
+                      cloudStack.dialog.notice({ message: parseXMLHttpResponse(json) });
                     }
                   });
                   
@@ -2863,6 +3115,10 @@
                     success: function(json) {
 										  havingSwift = true;
                       args.response.success();
+                      
+                      cloudStack.dialog.notice({
+                        message: 'Swift configured. Note: When you leave this page, you will not be able to re-configure Swift again.'
+                      });
                     },
                     error: function(json) {
                       args.response.error(parseXMLHttpResponse(json));
@@ -3047,7 +3303,8 @@
                       dns2: { label: 'DNS 2', isEditable: true },
                       internaldns1: { label: 'Internal DNS 1', isEditable: true },
                       internaldns2: { label: 'Internal DNS 2', isEditable: true },
-                      networktype: { label: 'Network Type' },
+                      domainname: { label: 'Domain' },
+											networktype: { label: 'Network Type' },
                       securitygroupsenabled: {
                         label: 'Security Groups Enabled',
                         converter:cloudStack.converters.toBooleanText

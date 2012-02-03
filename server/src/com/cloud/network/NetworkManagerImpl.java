@@ -2513,6 +2513,10 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             permittedAccounts.add(caller.getId());
             domainId = caller.getDomainId();
         }
+        
+        if (caller.getType() == Account.ACCOUNT_TYPE_DOMAIN_ADMIN) {
+        	domainId = caller.getDomainId();
+        }
 
         //set project information
         boolean skipProjectNetworks = true;
@@ -2576,7 +2580,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             
             if (!permittedAccounts.isEmpty()) {
                 networksToReturn.addAll(listAccountSpecificNetworks(buildNetworkSearchCriteria(sb, keyword, id, isSystem, zoneId, guestIpType, trafficType, physicalNetworkId, aclType, skipProjectNetworks, restartRequired, specifyIpRanges), searchFilter, permittedAccounts));
-            } else if (domainId == null){
+            } else if (domainId == null || listAll){
                 networksToReturn.addAll(listAccountSpecificNetworksByDomainPath(buildNetworkSearchCriteria(sb, keyword, id, isSystem, zoneId, guestIpType, trafficType, physicalNetworkId, aclType, skipProjectNetworks, restartRequired, specifyIpRanges), searchFilter, path, isRecursive));
             } 
         } else {
@@ -2943,6 +2947,28 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         return result;
     }
 
+    @Override
+    public boolean validateRule(FirewallRule rule) {
+        Network network = _networksDao.findById(rule.getNetworkId());
+        Purpose purpose = rule.getPurpose();
+        for (NetworkElement ne : _networkElements) {
+            boolean validated;
+            switch (purpose) {
+            case LoadBalancing:
+                if (!(ne instanceof LoadBalancingServiceProvider)) {
+                    continue;
+                }
+                validated = ((LoadBalancingServiceProvider) ne).validateLBRule(network, (LoadBalancingRule) rule);
+                if (!validated)
+                    return false;
+                break;
+            default:
+                s_logger.debug("Unable to validate network rules for purpose: " + purpose.toString());
+                validated = false;
+            }
+        }
+        return true;
+    }
     @Override
     /* The rules here is only the same kind of rule, e.g. all load balancing rules or all port forwarding rules */
     public boolean applyRules(List<? extends FirewallRule> rules, boolean continueOnError) throws ResourceUnavailableException {
@@ -3875,10 +3901,10 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
         //2) Only after all the elements and rules are shutdown properly, update the network VO
     	//get updated network
-        network = _networksDao.findById(networkId);
-    	boolean validStateToImplement = (network.getState() == Network.State.Implemented || network.getState() == Network.State.Setup || network.getState() == Network.State.Allocated);
+        Network.State networkState = _networksDao.findById(networkId).getState();
+    	boolean validStateToImplement = (networkState == Network.State.Implemented || networkState == Network.State.Setup || networkState == Network.State.Allocated);
     	if (restartNetwork && !validStateToImplement) {
-            throw new CloudRuntimeException("Failed to implement the network elements and resources as a part of network update: " + network + "; network is in wrong state: " + network.getState());
+            throw new CloudRuntimeException("Failed to implement the network elements and resources as a part of network update: " + network + "; network is in wrong state: " + networkState);
     	}
     	
         if (networkOfferingId != null) {
@@ -5777,6 +5803,15 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
                 	Set<Network.Service> requiredServices = element.getCapabilities().keySet();
                 	if (requiredServices.contains(Network.Service.Gateway)) {
                 		requiredServices.remove(Network.Service.Gateway);
+                	} 
+                	
+                	//Remove firewall from the list of services-to-compare
+                	if (requiredServices.contains(Network.Service.Firewall)) {
+                		requiredServices.remove(Network.Service.Firewall);
+                	}
+                	
+                	if (enabledServices.contains(Network.Service.Firewall)) {
+                		enabledServices.remove(Network.Service.Firewall);
                 	}
                 	
                 	//exclude gateway service
