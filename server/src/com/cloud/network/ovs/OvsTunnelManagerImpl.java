@@ -145,8 +145,10 @@ public class OvsTunnelManagerImpl implements OvsTunnelManager {
 			return;
 		}
 		
+		s_logger.debug("Creating tunnels with OVS tunnel manager");
 		if (instance.getType() != VirtualMachine.Type.User
 				&& instance.getType() != VirtualMachine.Type.DomainRouter) {
+			s_logger.debug("Will not work if you're not an instance or a virtual router");
 			return;
 		}
 		
@@ -161,6 +163,8 @@ public class OvsTunnelManagerImpl implements OvsTunnelManager {
 		if (routers.size() != 0) {
 			ins.addAll(routers);
 		}
+		s_logger.debug("### Virtual Machines:" + vms.size());
+		s_logger.debug("### Virtual Routers:" + routers.size());
 		List<Pair<Long, Integer>>toHosts = new ArrayList<Pair<Long, Integer>>();
 		List<Pair<Long, Integer>>fromHosts = new ArrayList<Pair<Long, Integer>>();
 		int key;

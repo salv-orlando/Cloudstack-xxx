@@ -26,6 +26,8 @@ import javax.ejb.Local;
 
 import org.apache.log4j.Logger;
 
+import com.cloud.configuration.Config;
+import com.cloud.configuration.dao.ConfigurationDao;
 import com.cloud.dc.DataCenter;
 import com.cloud.dc.DataCenter.NetworkType;
 import com.cloud.dc.dao.DataCenterDao;
@@ -45,12 +47,14 @@ import com.cloud.network.Network.State;
 import com.cloud.network.NetworkManager;
 import com.cloud.network.NetworkProfile;
 import com.cloud.network.NetworkVO;
+import com.cloud.network.PhysicalNetworkVO;
 import com.cloud.network.Networks.AddressFormat;
 import com.cloud.network.Networks.BroadcastDomainType;
 import com.cloud.network.Networks.Mode;
 import com.cloud.network.Networks.TrafficType;
 import com.cloud.network.dao.IPAddressDao;
 import com.cloud.network.dao.NetworkDao;
+import com.cloud.network.dao.PhysicalNetworkDao;
 import com.cloud.offering.NetworkOffering;
 import com.cloud.user.Account;
 import com.cloud.user.UserContext;
@@ -80,9 +84,13 @@ public class GuestNetworkGuru extends AdapterBase implements NetworkGuru {
     @Inject
     protected NicDao _nicDao;
     @Inject
+    ConfigurationDao _configDao;
+    @Inject
     protected NetworkDao _networkDao;
     @Inject
     IPAddressDao _ipAddressDao;
+    @Inject 
+    protected PhysicalNetworkDao _physicalNetworkDao;    
     Random _rand = new Random(System.currentTimeMillis());
 
     private static final TrafficType[] _trafficTypes = {TrafficType.Guest};
@@ -270,6 +278,29 @@ public class GuestNetworkGuru extends AdapterBase implements NetworkGuru {
         }
 
         return new Ip4Address(ip);
+    }
+
+    public int getVlanOffset(long physicalNetworkId, int vlanTag) {
+        PhysicalNetworkVO pNetwork = _physicalNetworkDao.findById(physicalNetworkId);
+        if (pNetwork == null) {
+            throw new CloudRuntimeException("Could not find the physical Network " + physicalNetworkId + ".");
+        }
+
+        if (pNetwork.getVnet() == null) {
+            throw new CloudRuntimeException("Could not find vlan range for physical Network " + physicalNetworkId + ".");
+        }
+        String vlanRange[] = pNetwork.getVnet().split("-");
+        int lowestVlanTag = Integer.valueOf(vlanRange[0]);
+        return vlanTag - lowestVlanTag;
+    }
+
+    public int getGloballyConfiguredCidrSize() {
+        try {
+            String globalVlanBits = _configDao.getValue(Config.GuestVlanBits.key());
+            return 8 + Integer.parseInt(globalVlanBits);
+        } catch (Exception e) {
+            throw new CloudRuntimeException("Failed to read the globally configured VLAN bits size.");
+        }
     }
 
     @Override
