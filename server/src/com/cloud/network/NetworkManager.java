@@ -210,6 +210,8 @@ public interface NetworkManager extends NetworkService {
     String getIpOfNetworkElementInVirtualNetwork(long accountId, long dataCenterId);
 
     List<NetworkVO> listNetworksForAccount(long accountId, long zoneId, Network.GuestType type);
+    
+    List<NetworkVO> listAllNetworksInAllZonesByType(Network.GuestType type);
 
     IPAddressVO markIpAsUnavailable(long addrId);
 

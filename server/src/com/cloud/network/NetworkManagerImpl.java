@@ -3769,6 +3769,17 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         return accountNetworks;
     }
 
+    @Override
+    public List<NetworkVO> listAllNetworksInAllZonesByType(Network.GuestType type) {
+    	List<NetworkVO> networks = new ArrayList<NetworkVO>();
+    	for (NetworkVO network: _networksDao.listAll()) {
+    		if (!isNetworkSystem(network)) {
+    			networks.add(network);
+    		}
+    	}
+    	return networks;
+    }
+        
     @DB
     @Override
     public IPAddressVO markIpAsUnavailable(long addrId) {

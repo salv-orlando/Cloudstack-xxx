@@ -4,6 +4,7 @@
 # A plugin for executing script needed by vmops cloud 
 
 import os, sys, time
+import subprocess
 import XenAPIPlugin
 sys.path.append("/opt/xensource/sm/")
 import util
@@ -21,10 +22,18 @@ vSwitchDBDaemonName = "ovsdb-server"
 vSwitchPidFile = "/var/run/openvswitch/ovs-vswitchd.pid"
 vsctlPath = "/usr/bin/ovs-vsctl"
 ofctlPath = "/usr/bin/ovs-ofctl"
+xePath=  "/opt/xensource/bin/xe"
 vSwitchDaemonName = "ovs-vswitchd"
 
 logFile = "/var/log/ovstunnel.log"
 fLog = None
+
+
+class PluginError(Exception):
+    """Base Exception class for all plugin errors."""
+    def __init__(self, *args):
+        Exception.__init__(self, *args)
+
 
 def echo(fn):
 	def wrapped(*v, **k):
@@ -95,6 +104,8 @@ def check_switch ():
 		if ret == -1: return "NO_SWITCH_PID_FILE"
 		if ret == -2: return "SWITCH_NOT_RUN"
 
+	#TODO (salvatore-orlando): Think about remotely executing ovs-vsctl
+	#and ovs-ofctl in the future 
 	if is_tool_exist (vsctlPath) < 0:
 		return "NO_VSCTL"
 
@@ -103,24 +114,23 @@ def check_switch ():
 
 	return "SUCCESS"
 
-def do_cmd (cmds, lines=False):
-	cmd = ""
-	for i in cmds:
-		cmd += " "
-		cmd += i
 
-	pr("do command '%s'" % cmd)
-	f = os.popen (cmd)
-	if lines == True:
-		res = f.readlines ()
-	else:
-		res = f.readline ()
-		res = res[:-1]
-	f.close ()
+def do_cmd(cmd):
+	"""Abstracts out the basics of issuing system commands. If the command
+	returns anything in stderr, a PluginError is raised with that information.
+	Otherwise, the output from stdout is returned.
+	"""
 
-	if lines == False:
-		pr("command output '%s'" % res)
-	return res
+	pipe = subprocess.PIPE
+	pr("Executing:%s" %cmd)
+	proc = subprocess.Popen(cmd, shell=False, stdin=pipe, stdout=pipe, stderr=pipe, close_fds=True)
+	proc.wait()
+	err = proc.stderr.read()
+	if err:
+		pr("The command exited with the following error:%s" %err)
+		raise PluginError(err)
+	return proc.stdout.read()
+
 
 ######################## GRE creation utils ##########################
 # UUID's format is 8-4-4-4-12
@@ -137,72 +147,152 @@ def is_uuid (uuid):
 
 	return 0
 
-def set_flood_flow(bridge, inport):
-	flow = "in_port=%s idle_timeout=0 hard_timeout=0 priority=10000 actions=flood" % inport
-	add_flow(bridge, flow)
-
 @echo
-def create_tunnel (session, args):
+def setup_ovs_bridge(session, args):
 	bridge = args.pop("bridge")
-	remoteIP = args.pop("remote_ip")
-	greKey = args.pop("key")
-	srcHost = args.pop("from")
-	dstHost = args.pop("to")
+	key = args.pop("key")
+	
+	res = check_switch()
+	if res != "SUCCESS":
+		return "FAILURE:%s" %res
+
+	pr("About to manually create the following bridge:%s" %bridge)
+	# create a bridge with the same name as the xapi network
+	# also associate gre key in other config attribute
+	res = do_cmd([vsctlPath, "--", "--may-exist", "add-br", bridge, "--", "set",
+				  "bridge", bridge, "other_config:gre_key=%s" % key])
+	pr("Bridge has been manually created:%s" %res)
+	# TODO: Make sure xs-network-uuid is set into external_ids
+	# Non empty result means something went wrong
+	if res:
+		result = "FAILURE:%s" %res
+	else:
+		# Verify the bridge actually exists, with the gre_key properly set
+		res = do_cmd([vsctlPath, "get", "bridge", bridge, "other_config:gre_key"])
+		if key in res:
+			result = "SUCCESS:%s" %bridge 
+		else:
+			result = "FAILURE:%s" %res
+	pr("Setup_ovs_bridge complete with result:%s" %result)
+	return result
+	
+@echo
+def destroy_ovs_bridge(session, args):#
+	bridge = args.pop("bridge")
 
 	res = check_switch()
 	if res != "SUCCESS":
 		return res
 
-	name = "%s-%s-%s-%s" % (bridge, srcHost, dstHost, greKey)
-
-	wait = [vsctlPath, "--timeout=30 wait-until bridge %s -- get bridge %s name" % \
-			(bridge, bridge)]
+	
+@echo
+def create_tunnel (session, args):
+	bridge = args.pop("bridge")
+	remote_ip = args.pop("remote_ip")
+	gre_key = args.pop("key")
+	src_host = args.pop("from")
+	dst_host = args.pop("to")
+	
+	pr("Entering create_tunnel")
+	
+	res = check_switch()
+	if res != "SUCCESS":
+		pr("Openvswitch running: NO")
+		return "FAILURE:%s" %res
+	pr("Openvswitch running: OK")
+	
+	# We need to keep the name below 14 characters
+	# src and target are enough - consider a fixed length hash
+	name = "t%s-%s-%s" % (gre_key, src_host, dst_host)
+	
+	# Verify the xapi bridge to be created
+	# NOTE: Timeout should not be necessary anymore
+	wait = [vsctlPath, "--timeout=30", "wait-until", "bridge", bridge, "--",
+		    "get", "bridge", bridge, "name"]
 	res = do_cmd(wait)
 	if bridge not in res:
-		pr("WARNIING:Can't find bridge %s for creating tunnel!" % bridge)
-		result = "COMMAND_FAILED_NO_BRIDGE"
-		return result
-
-	createInterface = [vsctlPath, "create interface", "name=%s" % name, \
-			'type=gre options:remote_ip=%s options:key=%s' % (remoteIP, greKey)]
-	ifaceUUID = do_cmd (createInterface)
-	if is_uuid (ifaceUUID) < 0:
-		pr("create interface failed, %s is not UUID" % ifaceUUID)
-		result = "COMMAND_FAILED_CREATE_INTERFACE_FAILED"
-		return result
-
-	createPort = [vsctlPath, "create port", "name=%s" % name, \
-			"interfaces=[%s]" % ifaceUUID]
-	portUUID = do_cmd (createPort)
-	if is_uuid (portUUID) < 0:
-		pr("create port failed, %s is not UUID" % portUUID)
-		result = "COMMAND_FAILED_CREATE_PORT_FAILED"
-		return result
-
-	addBridge = [vsctlPath, "add bridge %s" % bridge, "ports %s" % portUUID]
-	do_cmd (addBridge)
-
-	wait = [vsctlPath, "--timeout=30 wait-until port %s -- get port %s name" % \
-			(name, name)]
-	res = do_cmd(wait)
-	if name in res:
-		port = get_field_of_interface(name, "ofport");
-		if port == "[]":
-			return "COMMAND_FAILED_PORT_IS_[]"
-
-		noFlood = [ofctlPath, "mod-port %s %s noflood" % (bridge, \
-			port)]
-		do_cmd(noFlood)
-
-		set_flood_flow(bridge, port)
-		pr("create tunnel successful(bridge=%s, remote_ip=%s, key=%s, from=%s, to=%s" % \
-				(bridge, remoteIP, greKey, srcHost, dstHost))
-		result = "SUCCESS:%s" % name
-	else:
-		pr("create gre tunnel failed")
-		result = "COMMAND_FAILED_CREATE_TUNNEL_FAILED"
-	
-	return result
+		pr("WARNING:Can't find bridge %s for creating tunnel!" % bridge)
+		return "FAILURE:NO_BRIDGE"
+	pr("bridge %s for creating tunnel - VERIFIED" % bridge)
+	tunnel_setup = False
+	drop_flow_setup = False
+	allow_flow_setup = False
+	try:
+		# Create a port and configure the tunnel interface for it
+		add_tunnel = [vsctlPath, "add-port", bridge, name, "--", "set", "interface",
+					name, "type=gre", "options:key=%s" % gre_key,
+					"options:remote_ip=%s" % remote_ip] 
+		do_cmd(add_tunnel)
+		tunnel_setup = True
+		# verify port
+		verify_port = [vsctlPath, "get", "port", name, "interfaces"]
+		res = do_cmd(verify_port)
+		# Expecting python-style list as output
+		iface_list = []
+		pr("RESULT FROM IFACE LIST:%s" %res)
+		if len(res) > 2:
+			iface_list = res.strip()[1:-1].split(',')
+		if len(iface_list) != 1:
+			pr("WARNING: Unexpected output while verifying port %s on bridge %s" %(name, bridge))
+			return "FAILURE:VERIFY_PORT_FAILED"
+		
+		# verify interface
+		iface_uuid = iface_list[0]
+		verify_interface_key = [vsctlPath, "get", "interface", iface_uuid, "options:key"]
+		verify_interface_ip = [vsctlPath, "get", "interface", iface_uuid, "options:remote_ip"]
+		
+		key_validation = do_cmd(verify_interface_key)
+		ip_validation = do_cmd(verify_interface_ip)
+		
+		if not gre_key in key_validation or not remote_ip in ip_validation:
+			pr("WARNING: Unexpected output while verifying interface %s on bridge %s" %(name, bridge))
+			return "FAILURE:VERIFY_INTERFACE_FAILED"
+		pr("Tunnel interface validated:%s" %verify_interface_ip)
+		cmd_tun_ofport = [vsctlPath, "get", "interface", iface_uuid, "ofport"]
+		tun_ofport = do_cmd(cmd_tun_ofport)
+		# add flow entryies for dropping broadcast coming in from gre tunnel
+		pr("TUNNEL OFPORT:%s" %tun_ofport)
+		add_flow(bridge, priority=1000, in_port=tun_ofport,
+				dl_dst='ff:ff:ff:ff:ff:ff', actions='drop')
+		add_flow(bridge, priority=1000, in_port=tun_ofport,
+				nw_dst='224.0.0.0/24', actions='drop')
+		drop_flow_setup = True
+		pr("Broadcast drop rules added")
+		# add flow entry for allowing broadcast to reach ports already configured on OVS bridge
+		cmd_xs_nw_uuid = [xePath, "network-list",
+						  "bridge=%s" % bridge, "--minimal"]
+		pr("HERE-1")
+		xs_nw_uuid = do_cmd(cmd_xs_nw_uuid)
+		pr("HERE-2")
+		cmd_vif_ofports = [vsctlPath, "--", "--columns=ofport",
+						   "find", "interface",
+						   "external_ids:xs-network-uuid=%s" % xs_nw_uuid,
+						   "type!=gre"]
+		pr("HERE-3")
+		vif_ofports = do_cmd(cmd_vif_ofports)
+		pr("HERE-4:%s" %cmd_vif_ofports)
+		if len(vif_ofports) > 0:
+			action = "".join("output:%s," %ofport for ofport in vif_ofports)[:-1]
+			pr("HERE-5")
+			add_flow(bridge, priority=1100, in_port=tun_ofport,
+					dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
+			add_flow(bridge, priority=1100, in_port=tun_ofport,
+					nw_dst='224.0.0.0/24', actions=action)
+		pr("HERE-6")
+		return "SUCCESS:%s" % name
+	except:
+		pr("An unexpected error occured. Rolling back")
+		if tunnel_setup:
+			pr("Deleting GRE interface")
+			# Destroy GRE port and interface
+			del_port(bridge, name)
+			pass
+		if drop_flow_setup:
+			# Delete flows
+			pr("Deleting flow entriesfrom GRE interface")
+			del_flows(bridge, tun_ofport)
+			pass
+		raise
 ######################## End GRE creation utils ##########################
 
 def del_all_flows(bridge):
@@ -213,7 +303,8 @@ def del_all_flows(bridge):
 	add_flow(bridge, normalFlow)
 
 def del_flows(bridge, ofport):
-	delFlow = [ofctlPath, 'del-flows %s "in_port=%s"' % (bridge, ofport)]
+	""" removes flows configured for a specific of ports """
+	delFlow = [ofctlPath, 'del-flows', bridge, 'in_port=%s' % ofport]
 	do_cmd(delFlow)
 
 def del_port(bridge, port):
@@ -251,13 +342,33 @@ def get_field_of_interface(nameOruuid, field):
 	return None
 
 
-def add_flow(bridge, flow):
-	param = bridge + ' "%s"' % flow
-	addflow = ["ovs-ofctl add-flow", param]
+def add_flow(bridge, **kwargs):
+	"""
+	Builds a flow expression for **kwargs and adds the flow entry
+	to an Open vSwitch instance
+	"""
+	pr("I am in add_flow")
+	flow = "hard_timeout=%s,idle_timeout=%s,priority=%s"\
+			% (kwargs.get('hard_timeout','0'),
+			   kwargs.get('idle_timeout','0'),
+			   kwargs.get('priority','1'))
+	in_port = 'in_port' in kwargs and ",in_port=%s" % kwargs['in_port'] or ''
+	dl_src = 'dl_src' in kwargs and ",dl_src=%s" % kwargs['dl_src'] or ''
+	dl_dst = 'dl_dst' in kwargs and ",dl_dst=%s" % kwargs['dl_dst'] or ''
+	nw_src = 'nw_src' in kwargs and ",nw_src=%s" % kwargs['nw_src'] or ''
+	nw_dst = 'nw_dst' in kwargs and ",nw_dst=%s" % kwargs['nw_dst'] or ''
+	actions = 'actions' in kwargs and ",actions=%s" % kwargs['actions'] or ''
+	flow = flow + in_port + dl_src + dl_dst + nw_src + nw_dst + actions
+	pr("Flow to add:%s" %flow)
+	addflow = ["ovs-ofctl", "add-flow", bridge, flow]
 	do_cmd (addflow)
+	pr("Flow added")
 
 if __name__ == "__main__":
 	open_log()
-	XenAPIPlugin.dispatch({"create_tunnel":create_tunnel, "destroy_tunnel":destroy_tunnel})
+	XenAPIPlugin.dispatch({"create_tunnel":create_tunnel, 
+						   "destroy_tunnel":destroy_tunnel,
+						   "setup_ovs_bridge": setup_ovs_bridge,
+						   "destroy_ovs_bridge": destroy_ovs_bridge})
 	close_log()
 

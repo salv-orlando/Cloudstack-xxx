@@ -566,6 +566,8 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         vifr.network = nw;
         dom0vif = VIF.create(conn, vifr);
         dom0vif.plug(conn);
+        //Note(salvatore-orlando): not unplugging anymore as this would cause
+        //the bridge to be destroyed on the XenServer host
         dom0vif.unplug(conn);
         synchronized(_tmpDom0Vif) {
             _tmpDom0Vif.add(dom0vif);
@@ -600,22 +602,32 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         return null;
     }
 
-    private synchronized Network createTunnelNetwork(Connection conn, long account) {
+    private synchronized Network createTunnelNetwork(Connection conn, long networkId) {
         try {
-            String nwName = "OVSTunnel" + account;
+            String nwName = "OVSTunnel" + networkId;
             Network nw = null;
             Network.Record rec = new Network.Record();
             Set<Network> networks = Network.getByNameLabel(conn, nwName);
 
             if (networks.size() == 0) {
-                rec.nameDescription = "tunnel network for account " + account;
+                rec.nameDescription = "tunnel network id# " + networkId;
                 rec.nameLabel = nwName;
                 nw = Network.create(conn, rec);
             } else {
                 nw = networks.iterator().next();
             }
-
-            enableXenServerNetwork(conn, nw, nwName, "tunnel network for account " + account);
+            s_logger.debug("### Xen Server network for tunnels created:" + nwName);
+            enableXenServerNetwork(conn, nw, nwName, "tunnel network for account " + networkId);
+            //Invoke plugin to setup the bridge which will be used by this network
+            String bridge = nw.getBridge(conn);
+            String result = callHostPlugin(conn, "ovstunnel", "setup_ovs_bridge", "bridge", bridge,
+            							   "key", String.valueOf(networkId));
+            String[] res = result.split(":");
+            if (res.length != 2 || !res[0].equalsIgnoreCase("SUCCESS")) {
+            	//TODO: Should make this error not fatal?
+            	throw new CloudRuntimeException("Unable to pre-configure OVS bridge " + bridge + " for network:" + nwName +
+            									" - " + res);
+            }
             return nw;
         } catch (Exception e) {
             s_logger.warn("create tunnel network failed", e);
@@ -4695,15 +4707,18 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         Connection conn = getConnection();
         String bridge = "unknown";
         try {
-            Network nw = createTunnelNetwork(conn, cmd.getAccount());
+            s_logger.debug("### About to create tunnel network");
+        	Network nw = createTunnelNetwork(conn, cmd.getNetworkId());
             if (nw == null) {
+            	s_logger.debug("### SOMETHING WENT WRONG");
                 return new OvsCreateTunnelAnswer(cmd, false, "Cannot create network", bridge);
             }
-
+            
             bridge = nw.getBridge(conn);
+            s_logger.debug("### The bridge is:" + bridge);
             String result = callHostPlugin(conn, "ovstunnel", "create_tunnel", "bridge", bridge, "remote_ip", cmd.getRemoteIp(), "key", cmd.getKey(), "from", cmd.getFrom().toString(), "to", cmd
                     .getTo().toString());
-
+            s_logger.debug("### Result from create tunnel operation:" + result);
             String[] res = result.split(":");
             if (res.length == 2 && res[0].equalsIgnoreCase("SUCCESS")) {
                 return new OvsCreateTunnelAnswer(cmd, true, result, res[1], bridge);
@@ -4711,7 +4726,8 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
                 return new OvsCreateTunnelAnswer(cmd, false, result, bridge);
             }
         } catch (Exception e) {
-            s_logger.warn("caught execption when creating ovs tunnel", e);
+        	s_logger.debug("### SOMETHING WENT WRONG");
+        	s_logger.warn("caught execption when creating ovs tunnel", e);
             return new OvsCreateTunnelAnswer(cmd, false, e.getMessage(), bridge);
         }
     }

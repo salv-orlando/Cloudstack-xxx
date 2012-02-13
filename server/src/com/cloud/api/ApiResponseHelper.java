@@ -2708,7 +2708,12 @@ public class ApiResponseHelper implements ResponseGenerator {
         if (network.getBroadcastUri() != null) {
             String broadcastUri = network.getBroadcastUri().toString();
             response.setBroadcastUri(broadcastUri);
-            String vlan = broadcastUri.substring("vlan://".length(), broadcastUri.length());
+            s_logger.debug("########## Network ID:" + network.getId());
+            s_logger.debug("########## Broadcast URI:" + broadcastUri.length());
+            String vlan = "N/A";
+            if (broadcastUri.startsWith("vlan://")) {
+            	vlan = broadcastUri.substring("vlan://".length(), broadcastUri.length());	
+            }
             response.setVlan(vlan);
         }
 

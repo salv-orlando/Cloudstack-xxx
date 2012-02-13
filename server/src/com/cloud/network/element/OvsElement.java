@@ -72,7 +72,8 @@ public class OvsElement extends AdapterBase implements NetworkElement {
             DeployDestination dest, ReservationContext context)
             throws ConcurrentOperationException, ResourceUnavailableException,
             InsufficientCapacityException {
-        return true;
+        //Consider actually implementing the network here
+    	return true;
     }
 
     @Override
@@ -94,7 +95,7 @@ public class OvsElement extends AdapterBase implements NetworkElement {
         if (command != null) {
             nic.setBroadcastUri(BroadcastDomainType.Vswitch.toUri(command));
         }
-        _ovsTunnelMgr.VmCheckAndCreateTunnel(vm, dest);
+        _ovsTunnelMgr.VmCheckAndCreateTunnel(vm, network, dest);
 
         return true;
     }
@@ -124,7 +125,7 @@ public class OvsElement extends AdapterBase implements NetworkElement {
 
     @Override
     public boolean isReady(PhysicalNetworkServiceProvider provider) {
-        return true;
+    	return true;
     }
 
     @Override

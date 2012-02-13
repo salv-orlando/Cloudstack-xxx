@@ -303,6 +303,20 @@ public class GuestNetworkGuru extends AdapterBase implements NetworkGuru {
         }
     }
 
+    protected void allocateVnet(Network network, NetworkVO implemented, long dcId,
+    		long physicalNetworkId, String reservationId) throws InsufficientVirtualNetworkCapcityException {
+        if (network.getBroadcastUri() == null) {
+            String vnet = _dcDao.allocateVnet(dcId, physicalNetworkId, network.getAccountId(), reservationId);
+            if (vnet == null) {
+                throw new InsufficientVirtualNetworkCapcityException("Unable to allocate vnet as a part of network " + network + " implement ", DataCenter.class, dcId);
+            }
+            implemented.setBroadcastUri(BroadcastDomainType.Vlan.toUri(vnet));
+            EventUtils.saveEvent(UserContext.current().getCallerUserId(), network.getAccountId(), EventVO.LEVEL_INFO, EventTypes.EVENT_ZONE_VLAN_ASSIGN, "Assigned Zone Vlan: "+vnet+ " Network Id: "+network.getId(), 0);
+        } else {
+            implemented.setBroadcastUri(network.getBroadcastUri());
+        }
+    }
+    
     @Override
     public Network implement(Network network, NetworkOffering offering, DeployDestination dest, ReservationContext context) throws InsufficientVirtualNetworkCapcityException {
         assert (network.getState() == State.Implementing) : "Why are we implementing " + network;
@@ -315,16 +329,7 @@ public class GuestNetworkGuru extends AdapterBase implements NetworkGuru {
         NetworkVO implemented = new NetworkVO(network.getTrafficType(), network.getMode(), network.getBroadcastDomainType(), network.getNetworkOfferingId(), State.Allocated,
                 network.getDataCenterId(), physicalNetworkId);
 
-        if (network.getBroadcastUri() == null) {
-            String vnet = _dcDao.allocateVnet(dcId, physicalNetworkId, network.getAccountId(), context.getReservationId());
-            if (vnet == null) {
-                throw new InsufficientVirtualNetworkCapcityException("Unable to allocate vnet as a part of network " + network + " implement ", DataCenter.class, dcId);
-            }
-            implemented.setBroadcastUri(BroadcastDomainType.Vlan.toUri(vnet));
-            EventUtils.saveEvent(UserContext.current().getCallerUserId(), network.getAccountId(), EventVO.LEVEL_INFO, EventTypes.EVENT_ZONE_VLAN_ASSIGN, "Assigned Zone Vlan: "+vnet+ " Network Id: "+network.getId(), 0);
-        } else {
-            implemented.setBroadcastUri(network.getBroadcastUri());
-        }
+        allocateVnet(network, implemented, dcId, physicalNetworkId, context.getReservationId());
 
         if (network.getGateway() != null) {
             implemented.setGateway(network.getGateway());
