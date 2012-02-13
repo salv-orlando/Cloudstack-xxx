@@ -17,7 +17,6 @@
  */
 package com.cloud.resource;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
@@ -468,7 +467,8 @@ public class ResourceManagerImpl implements ResourceManager, ResourceService, Ma
         }
     }
 
-    private Discoverer getMatchingDiscover(Hypervisor.HypervisorType hypervisorType) {
+    @Override
+    public Discoverer getMatchingDiscover(Hypervisor.HypervisorType hypervisorType) {
         Enumeration<? extends Discoverer> en = _discoverers.enumeration();
         while (en.hasMoreElements()) {
             Discoverer discoverer = en.nextElement();
@@ -899,6 +899,7 @@ public class ResourceManagerImpl implements ResourceManager, ResourceService, Ma
                 s_logger.error("Unable to resolve " + allocationState + " to a valid supported allocation State");
                 throw new InvalidParameterValueException("Unable to resolve " + allocationState + " to a supported state");
             } else {
+                _capacityDao.updateCapacityState(null, null, cluster.getId(), null, allocationState);
                 cluster.setAllocationState(newAllocationState);
                 doUpdate = true;
             }
@@ -1036,6 +1037,8 @@ public class ResourceManagerImpl implements ResourceManager, ResourceService, Ma
             throw new NoTransitionException("No next resource state found for current state =" + currentState + " event =" + event);
         }
         
+        // TO DO - Make it more granular and have better conversion into capacity type
+        _capacityDao.updateCapacityState(null, null, null, host.getId(), nextState.toString());
         return _hostDao.updateResourceState(currentState, event, nextState, host);
     }
     

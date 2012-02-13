@@ -31,7 +31,7 @@
             .addClass('navigation-item')
             .addClass(sectionID)
             .append($('<span>').addClass('icon').html('&nbsp;'))
-            .append($('<span>').html(args.title))
+            .append($('<span>').html(_l(args.title)))
             .data('cloudStack-section-id', sectionID);
 
       $li.appendTo($navList);
@@ -67,7 +67,7 @@
     // Reset browser panels
     $browser.cloudBrowser('removeAllPanels');
     $panel = $browser.cloudBrowser('addPanel', {
-      title: data.title,
+      title: _l(data.title),
       data: ''
     });
 
@@ -98,7 +98,7 @@
                 // Total notifications
                 .append($('<span>').html(0))
             )
-            .append($('<span>').html('Notifications'))
+            .append($('<span>').html(_l('label.notifications')))
             .notifications();
 
       // Project switcher
@@ -106,7 +106,7 @@
             .append(
               // Default View
               $('<div>').addClass('select default-view active')
-                .html('Default View')
+                .html(_l('label.default.view'))
                 .prepend(
                   $('<span>').addClass('icon').html('&nbsp;')
                 )
@@ -114,7 +114,7 @@
             .append(
               // Project View
               $('<div>').addClass('select project-view')
-                .html('Project View')
+                .html(_l('label.project.view'))
                 .prepend(
                   $('<span>').addClass('icon').html('&nbsp;')
                 )
@@ -154,6 +154,11 @@
                 $projectSelect.hide();
                 $projectSwitcher.find('.select.default-view').addClass('active')
                   .siblings().removeClass('active');
+
+                // Put project name in header
+                $('.select.project-view').html(
+                  '<span class="icon">&nbsp;</span>' + _l('label.project.view')
+                ).attr('title', '');
 
                 // Clear out project
                 cloudStack.context.projects = null;
@@ -244,7 +249,7 @@
     $(['Logout', 'Help']).each(function() {
       var $link = $('<a>')
         .attr({ href: '#' })
-        .html(this.toString())
+        .html(_l(this.toString()))
         .appendTo($options);
 
       if (this == 'Help') {
@@ -267,8 +272,28 @@
       .click();
 
     // Validation
-    $.extend($.validator.messages, { required: 'Required field' });
+    $.extend($.validator.messages, { required: _l('label.required') });
 
+    // Check for pending project invitations
+    cloudStack.projects.invitationCheck({
+      context: cloudStack.context,
+      response: {
+        success: function(args) {
+          if (!args.data.length) return;
+          
+          var projectList = $.map(args.data, function(invitation) {
+            return '<li>' + invitation.project + '</li>';
+          }).join('');
+
+          cloudStack.dialog.notice({
+            message: _l('message.pending.projects.1') +
+              '<ul>' + projectList + '</ul>' +
+              '<p>' + _l('message.pending.projects.2') + '</p>'
+          });
+        }
+      }
+    });
+    
     return this;
   };
 
@@ -326,4 +351,5 @@
       return true;
     });
   });
-})(jQuery, window.cloudStack ? window.cloudStack : window.cloudStack = {});
+})(window.jQuery,
+   window.cloudStack ? window.cloudStack : window.cloudStack = {});

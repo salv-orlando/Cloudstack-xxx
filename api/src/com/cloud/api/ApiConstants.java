@@ -171,7 +171,7 @@ public class ApiConstants {
     public static final String SNAPSHOT_ID = "snapshotid";
     public static final String SNAPSHOT_POLICY_ID = "snapshotpolicyid";
     public static final String SNAPSHOT_TYPE = "snapshottype";
-    public static final String SOURCE_ZONE_ID = "sourcezoneid";
+    public static final String SOURCE_ZONE_ID = "sourcezoneid";    
     public static final String START_DATE = "startdate";
     public static final String START_IP = "startip";
     public static final String START_PORT = "startport";
@@ -186,6 +186,8 @@ public class ApiConstants {
     public static final String TIMEOUT = "timeout";
     public static final String TIMEZONE = "timezone";
     public static final String TYPE = "type";
+    public static final String TRUST_STORE = "truststore";
+    public static final String TRUST_STORE_PASSWORD = "truststorepass";
     public static final String URL = "url";
     public static final String USAGE_INTERFACE = "usageinterface";
     public static final String USER_DATA = "userdata";
@@ -327,6 +329,8 @@ public class ApiConstants {
     public static final String SPECIFY_IP_RANGES = "specifyipranges";
     public static final String IS_SOURCE_NAT = "issourcenat";
     public static final String IS_STATIC_NAT = "isstaticnat";
+    public static final String SORT_BY = "sortby";
+    public static final String CHANGE_CIDR = "changecidr";
     
     public enum HostDetails {
         all, capacity, events, stats, min;
@@ -337,7 +341,7 @@ public class ApiConstants {
     }
     
     public enum LDAPParams {
-        hostname, port, usessl, queryfilter, searchbase, dn, passwd;
+        hostname, port, usessl, queryfilter, searchbase, dn, passwd, truststore, truststorepass;
         
         @Override
         public String toString(){

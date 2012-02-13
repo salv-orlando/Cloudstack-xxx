@@ -1,7 +1,7 @@
 (function(cloudStack, $) {
 
   var requiredNetworkOfferingExists = false;
-  var networkServiceObjs = [];
+  var networkServiceObjs = [], serviceCheckboxNames = [];
 	
   cloudStack.sections.configuration = {
     title: 'Configuration',
@@ -118,7 +118,7 @@
                           var items = [];
                           var domainObjs = json.listdomainsresponse.domain;
                           $(domainObjs).each(function(){
-                            items.push({id: this.id, description: this.name});
+                            items.push({id: this.id, description: this.path});
                           });
                           args.response.success({data: items});
                         }
@@ -429,7 +429,7 @@
                           var items = [];
                           var domainObjs = json.listdomainsresponse.domain;
                           $(domainObjs).each(function(){
-                            items.push({id: this.id, description: this.name});
+                            items.push({id: this.id, description: this.path});
                           });
                           args.response.success({data: items});
                         }
@@ -738,7 +738,7 @@
                           var items = [];
                           var domainObjs = json.listdomainsresponse.domain;
                           $(domainObjs).each(function(){
-                            items.push({id: this.id, description: this.name});
+                            items.push({id: this.id, description: this.path});
                           });
                           args.response.success({data: items});
                         }
@@ -989,7 +989,13 @@
           label: 'Network offerings',
           fields: {
             name: { label: 'Name' },
-            state: { label: 'State', indicator: { 'Enabled': 'on', 'Disabled': 'off', 'Destroyed': 'off' }}
+            state: {
+              converter: function(str) {
+                // For localization
+                return str;
+              },
+              label: 'State', indicator: { 'Enabled': 'on', 'Disabled': 'off', 'Destroyed': 'off' }
+            }
           },
 
           dataProvider: function(args) {					  
@@ -1043,11 +1049,12 @@
                 desc: 'Please specify the network offering',																
 								preFilter: function(args) {
                   var $availability = args.$form.find('.form-item[rel=availability]');
-                  
-                  args.$form.bind('change', function() {
+                  var $serviceOfferingId = args.$form.find('.form-item[rel=serviceOfferingId]');
+									
+                  args.$form.bind('change', function() { //when any field in the dialog is changed
+									  //check whether to show or hide availability field
                     var $sourceNATField = args.$form.find('input[name=\"service.SourceNat.isEnabled\"]');
                     var $guestTypeField = args.$form.find('select[name=guestIpType]');
-
                     if (!requiredNetworkOfferingExists &&
                         $sourceNATField.is(':checked') &&
                         $guestTypeField.val() == 'Isolated') {
@@ -1055,6 +1062,25 @@
                     } else {
                       $availability.hide();
                     }
+										
+										//check whether to show or hide serviceOfferingId field										
+                    var havingVirtualRouterForAtLeastOneService = false;									
+										$(serviceCheckboxNames).each(function(){										  
+											var checkboxName = this;                      								
+											if($("input[name='" + checkboxName + "']").is(":checked") == true) {											  
+											  var providerFieldName = checkboxName.replace(".isEnabled", ".provider"); //either dropdown or input hidden field
+                        var providerName = $("[name='" + providerFieldName + "']").val(); 
+												if(providerName == "VirtualRouter") {
+												  havingVirtualRouterForAtLeastOneService = true;
+													return false; //break each loop
+												}
+											}																					
+										});		
+                    if(havingVirtualRouterForAtLeastOneService == true)
+                      $serviceOfferingId.css('display', 'inline-block');
+                    else
+                      $serviceOfferingId.hide();		
+											
                   });
 								},				
                 fields: {
@@ -1134,7 +1160,9 @@
                               capabilities: 'service' + '.' + serviceName + '.' + 'capabilities',
                               provider: 'service' + '.' + serviceName + '.' + 'provider'
                             };
-
+                            
+														serviceCheckboxNames.push(id.isEnabled);														
+														
                             fields[id.isEnabled] = { label: serviceDisplayName, isBoolean: true };
 																												
 														if(providerObjs != null && providerObjs.length > 1) {	//present provider dropdown when there are multiple providers for a service												
@@ -1184,8 +1212,8 @@
 																			  for(var key in providerDropdownsForciblyChangedTogether) {																				  
 																					if(key == $thisProviderDropdown.context.name)
 																					  continue; //skip to next item in for loop
-																					else
-																					  $("select[name='" + key + "']").val(""); //no "" option in dropdown, so will force it to select 1st option in dropdown
+																					else 															
+																						$("select[name='" + key + "'] option:first").attr("selected", "selected");																					
 																				}																			 																																	
 																				providerDropdownsForciblyChangedTogether = {};  //reset			
                                       }																				
@@ -1405,8 +1433,11 @@
                 });      
 												
 								if(args.$form.find('.form-item[rel=availability]').css("display") == "none")
-                  inputData['availability'] = 'Optional';								
-														
+                  inputData['availability'] = 'Optional';		
+								
+                if(args.$form.find('.form-item[rel=serviceOfferingId]').css("display") == "none")									
+									delete inputData.serviceOfferingId;
+																
                 $.ajax({
                   url: createURL('createNetworkOffering'),
                   data: inputData,

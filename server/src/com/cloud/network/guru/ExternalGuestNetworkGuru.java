@@ -89,6 +89,9 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
         NetworkVO config = (NetworkVO) super.design(offering, plan, userSpecified, owner);
         if (config == null) {
             return null;
+        } else if (_networkMgr.networkIsConfiguredForExternalNetworking(plan.getDataCenterId(), config.getId())) {
+            /* In order to revert userSpecified network setup */
+            config.setState(State.Allocated);
         }
 
         return config;
@@ -102,7 +105,7 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
             return null;
         }
         
-        if (config.isSpecifiedCidr()) {
+        if (!_networkMgr.networkIsConfiguredForExternalNetworking(config.getDataCenterId(), config.getId())) {
             return super.implement(config, offering, dest, context);
         }
 
@@ -132,6 +135,8 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
         int offset = getVlanOffset(config.getPhysicalNetworkId(), vlanTag);
 
         // Determine the new gateway and CIDR
+        String[] oldCidr = config.getCidr().split("/");
+        String oldCidrAddress = oldCidr[0];
         int cidrSize = getGloballyConfiguredCidrSize();
 
         // If the offset has more bits than there is room for, return null
@@ -140,8 +145,7 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
             throw new CloudRuntimeException("The offset " + offset + " needs " + bitsInOffset + " bits, but only have " + (cidrSize - 8) + " bits to work with.");
         }
 
-        // Use 10.1.1.1 which is reserved for private address
-        long newCidrAddress = (NetUtils.ip2Long("10.1.1.1") & 0xff000000) | (offset << (32 - cidrSize));
+        long newCidrAddress = (NetUtils.ip2Long(oldCidrAddress) & 0xff000000) | (offset << (32 - cidrSize));
         implemented.setGateway(NetUtils.long2Ip(newCidrAddress + 1));
         implemented.setCidr(NetUtils.long2Ip(newCidrAddress) + "/" + cidrSize);
         implemented.setState(State.Implemented);
@@ -196,12 +200,8 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
     @Override
     public NicProfile allocate(Network config, NicProfile nic, VirtualMachineProfile<? extends VirtualMachine> vm) throws InsufficientVirtualNetworkCapcityException,
             InsufficientAddressCapacityException {
-       
-        if (config.isSpecifiedCidr()) {
-            return super.allocate(config, nic, vm);
-        }
-        
-        if (nic != null && nic.getRequestedIp() != null) {
+
+        if (_networkMgr.networkIsConfiguredForExternalNetworking(config.getDataCenterId(), config.getId()) && nic != null && nic.getRequestedIp() != null) {
             throw new CloudRuntimeException("Does not support custom ip allocation at this time: " + nic);
         }
         
@@ -211,11 +211,12 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
             return null;
         }
 
-        profile.setStrategy(ReservationStrategy.Start);
-        profile.setGateway(null);
-        profile.setNetmask(null);
-        /* We won't clear IP address, because router may set gateway as it IP, and it would be updated properly later */
-        //profile.setIp4Address(null);
+        if (_networkMgr.networkIsConfiguredForExternalNetworking(config.getDataCenterId(), config.getId())) {
+            profile.setStrategy(ReservationStrategy.Start);
+            profile.setIp4Address(null);
+            profile.setGateway(null);
+            profile.setNetmask(null);
+        }
 
         return profile;
     }
@@ -228,15 +229,13 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
             return;
         }
         
-        if (config.isSpecifiedCidr()) {
-            return;
+        if (_networkMgr.networkIsConfiguredForExternalNetworking(config.getDataCenterId(), config.getId())) {
+            nic.setIp4Address(null);
+            nic.setGateway(null);
+            nic.setNetmask(null);
+            nic.setBroadcastUri(null);
+            nic.setIsolationUri(null);
         }
-
-        nic.setIp4Address(null);
-        nic.setGateway(null);
-        nic.setNetmask(null);
-        nic.setBroadcastUri(null);
-        nic.setIsolationUri(null);
     }
 
     @Override
@@ -246,32 +245,32 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
         if (_ovsNetworkMgr.isOvsNetworkEnabled()) {
             return;
         }
-        if (config.isSpecifiedCidr()) {
-            super.reserve(nic, config, vm, dest, context);
-            return;
-        }
         
         DataCenter dc = _dcDao.findById(config.getDataCenterId());
-        
-        nic.setBroadcastUri(config.getBroadcastUri());
-        nic.setIsolationUri(config.getBroadcastUri());
-        nic.setDns1(dc.getDns1());
-        nic.setDns2(dc.getDns2());
-        nic.setNetmask(NetUtils.cidr2Netmask(config.getCidr()));
-        long cidrAddress = NetUtils.ip2Long(config.getCidr().split("/")[0]);
-        int cidrSize = getGloballyConfiguredCidrSize();
-        nic.setGateway(config.getGateway());
 
-        if (nic.getIp4Address() == null) {
-            String guestIp = _networkMgr.acquireGuestIpAddress(config, null);
-            if (guestIp == null) {
-                throw new InsufficientVirtualNetworkCapcityException("Unable to acquire guest IP address for network " + config, DataCenter.class, dc.getId());
+        if (_networkMgr.networkIsConfiguredForExternalNetworking(config.getDataCenterId(), config.getId())) {
+            nic.setBroadcastUri(config.getBroadcastUri());
+            nic.setIsolationUri(config.getBroadcastUri());
+            nic.setDns1(dc.getDns1());
+            nic.setDns2(dc.getDns2());
+            nic.setNetmask(NetUtils.cidr2Netmask(config.getCidr()));
+            long cidrAddress = NetUtils.ip2Long(config.getCidr().split("/")[0]);
+            int cidrSize = getGloballyConfiguredCidrSize();
+            nic.setGateway(config.getGateway());
+
+            if (nic.getIp4Address() == null) {
+                String guestIp = _networkMgr.acquireGuestIpAddress(config, null);
+                if (guestIp == null) {
+                    throw new InsufficientVirtualNetworkCapcityException("Unable to acquire guest IP address for network " + config, DataCenter.class, dc.getId());
+                }
+
+                nic.setIp4Address(guestIp);
+            } else {
+                long ipMask = NetUtils.ip2Long(nic.getIp4Address()) & ~(0xffffffffffffffffl << (32 - cidrSize));
+                nic.setIp4Address(NetUtils.long2Ip(cidrAddress | ipMask));
             }
-
-            nic.setIp4Address(guestIp);
         } else {
-            long ipMask = NetUtils.ip2Long(nic.getIp4Address()) & ~(0xffffffffffffffffl << (32 - cidrSize));
-            nic.setIp4Address(NetUtils.long2Ip(cidrAddress | ipMask));
+            super.reserve(nic, config, vm, dest, context);
         }
     }
 
@@ -283,7 +282,7 @@ public class ExternalGuestNetworkGuru extends GuestNetworkGuru {
 
         NetworkVO network = _networkDao.findById(nic.getNetworkId());
         
-        if (network != null) {
+        if (network != null && _networkMgr.networkIsConfiguredForExternalNetworking(network.getDataCenterId(), network.getId())) {
             return true;
         } else {
             return super.release(nic, vm, reservationId);

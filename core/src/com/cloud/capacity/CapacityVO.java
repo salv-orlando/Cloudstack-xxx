@@ -18,6 +18,7 @@
 
 package com.cloud.capacity;
 
+import javax.persistence.Transient;
 import java.util.Date;
 
 import javax.persistence.Column;
@@ -63,6 +64,9 @@ public class CapacityVO implements Capacity {
     @Column(name="capacity_type")
     private short capacityType;
     
+    @Column(name="capacity_state")
+    private CapacityState capacityState = CapacityState.Enabled;
+    
     @Column(name=GenericDao.CREATED_COLUMN)
     protected Date created;    
     
@@ -70,7 +74,9 @@ public class CapacityVO implements Capacity {
     @Temporal(value=TemporalType.TIMESTAMP)
     protected Date updateTime;
     
-
+    @Transient
+    private Float usedPercentage;
+    
     public CapacityVO() {}
 
     public CapacityVO(Long hostId, long dataCenterId, Long podId, Long clusterId, long usedCapacity, long totalCapacity, short capacityType) {
@@ -82,6 +88,14 @@ public class CapacityVO implements Capacity {
         this.totalCapacity = totalCapacity;
         this.capacityType = capacityType;
         this.updateTime = new Date();
+    }
+    
+    public CapacityVO(long dataCenterId, Long podId, Long clusterId, short capacityType, float usedPercentage) {        
+        this.dataCenterId = dataCenterId;
+        this.podId = podId;
+        this.clusterId = clusterId;
+        this.capacityType = capacityType;
+        this.usedPercentage = usedPercentage;
     }
 
     @Override
@@ -153,7 +167,15 @@ public class CapacityVO implements Capacity {
         this.capacityType = capacityType;
     }
 
-	public Date getCreated() {
+	public CapacityState getCapacityState() {
+        return capacityState;
+    }
+
+    public void setCapacityState(CapacityState capacityState) {
+        this.capacityState = capacityState;
+    }
+
+    public Date getCreated() {
 		return created;
 	}
 
@@ -164,4 +186,13 @@ public class CapacityVO implements Capacity {
 	public void setUpdateTime(Date updateTime) {
 		this.updateTime = updateTime;
 	}
+
+	@Override
+    public Float getUsedPercentage() {
+        return usedPercentage;
+    }
+
+    public void setUsedPercentage(float usedPercentage) {
+        this.usedPercentage = usedPercentage;
+    }
 }

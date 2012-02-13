@@ -14,7 +14,15 @@
           id: 'templates',
           label: 'Templates',          
           filters: {     
-            all: { label: 'All' },
+            all: { 
+						  preFilter: function(args) {					  
+								if (isAdmin()) //"listTemplates&templatefilter=all" only works for root-admin, but no domain-admin. Domain-admin is unable to see all templates until listTemplates API supports a new type of templatefilter for domain-admin to see all templates in his domain.
+									return true;
+								else						
+									return false;
+							},
+						  label: 'All' 
+					 },
 						mine: { label: 'Mine' },		
             featured: { label: 'Featured' },
             community: { label: 'Community' }            
@@ -31,16 +39,16 @@
 
               messages: {
                 confirm: function(args) {
-                  return 'Are you sure you want to create a template?';
+                  return "create.template.confirm";
                 },
                 success: function(args) {
-                  return 'Your new template is being created.';
+                  return "create.template.success";
                 },
                 notification: function(args) {
-                  return 'Creating new template';
+                  return "create.template.notification";
                 },
                 complete: function(args) {
-                  return 'Template has been created successfully!';
+                  return "create.template.complete";
                 }
               },
 
@@ -676,7 +684,15 @@
         listView: {
           label: 'ISOs',
           filters: {            
-					  all: { label: 'All' },
+					  all: { 						
+						 preFilter: function(args) {					  
+								if (isAdmin()) //"listIsos&filter=all" only works for root-admin, but no domain-admin. Domain-admin is unable to see all Isos until listIsos API supports a new type of isofilter for domain-admin to see all Isos in his domain.
+									return true;
+								else						
+									return false;
+							},						
+						  label: 'All' 
+						},
 					  mine: { label: 'Mine' },					
             featured: { label: 'Featured' },
             community: { label: 'Community' }            

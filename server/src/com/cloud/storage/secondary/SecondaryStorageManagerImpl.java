@@ -39,6 +39,7 @@ import com.cloud.agent.api.RebootCommand;
 import com.cloud.agent.api.SecStorageFirewallCfgCommand;
 import com.cloud.agent.api.SecStorageSetupAnswer;
 import com.cloud.agent.api.SecStorageSetupCommand;
+import com.cloud.agent.api.SecStorageSetupCommand.Certificates;
 import com.cloud.agent.api.SecStorageVMSetupCommand;
 import com.cloud.agent.api.StartupCommand;
 import com.cloud.agent.api.StartupSecondaryStorageCommand;
@@ -53,6 +54,7 @@ import com.cloud.cluster.ManagementServerNode;
 import com.cloud.configuration.Config;
 import com.cloud.configuration.ZoneConfig;
 import com.cloud.configuration.dao.ConfigurationDao;
+import com.cloud.consoleproxy.ConsoleProxyManager;
 import com.cloud.dc.DataCenter;
 import com.cloud.dc.DataCenter.NetworkType;
 import com.cloud.dc.DataCenterVO;
@@ -70,6 +72,7 @@ import com.cloud.hypervisor.Hypervisor.HypervisorType;
 import com.cloud.info.RunningHostCountInfo;
 import com.cloud.info.RunningHostInfoAgregator;
 import com.cloud.info.RunningHostInfoAgregator.ZoneHostInfo;
+import com.cloud.keystore.KeystoreManager;
 import com.cloud.network.NetworkManager;
 import com.cloud.network.NetworkVO;
 import com.cloud.network.Networks.TrafficType;
@@ -218,6 +221,8 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
     NetworkOfferingDao _networkOfferingDao;
     
 
+    @Inject
+    KeystoreManager _keystoreMgr;
     private long _capacityScanInterval = DEFAULT_CAPACITY_SCAN_INTERVAL;
 
     private int _secStorageVmRamSize;
@@ -280,7 +285,13 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
             List<HostVO> ssHosts = _ssvmMgr.listSecondaryStorageHostsInOneZone(zoneId);
             for( HostVO ssHost : ssHosts ) {
                 String secUrl = ssHost.getStorageUrl();
-                SecStorageSetupCommand setupCmd = new SecStorageSetupCommand(secUrl);
+                SecStorageSetupCommand setupCmd = null;
+                if (!_useSSlCopy) {
+                	setupCmd = new SecStorageSetupCommand(secUrl, null);
+                } else {
+                	Certificates certs = _keystoreMgr.getCertificates(ConsoleProxyManager.CERTIFICATE_NAME);
+                	setupCmd = new SecStorageSetupCommand(secUrl, certs);
+                }
                 
                 Answer answer = _agentMgr.easySend(ssHostId, setupCmd);
                 if (answer != null && answer.getResult()) {
@@ -300,7 +311,7 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
         } else if( cssHost.getType() == Host.Type.SecondaryStorage ) {
             List<SecondaryStorageVmVO> alreadyRunning = _secStorageVmDao.getSecStorageVmListInStates(SecondaryStorageVm.Role.templateProcessor, zoneId, State.Running);
             String secUrl = cssHost.getStorageUrl();
-            SecStorageSetupCommand setupCmd = new SecStorageSetupCommand(secUrl);
+            SecStorageSetupCommand setupCmd = new SecStorageSetupCommand(secUrl, null);
             for ( SecondaryStorageVmVO ssVm : alreadyRunning ) {
                 HostVO host = _resourceMgr.findHostByName(ssVm.getInstanceName());
                 Answer answer = _agentMgr.easySend(host.getId(), setupCmd);
@@ -400,7 +411,6 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
             return true;
         }
         HostVO ssAHost = _hostDao.findById(ssAHostId);
-        Long zoneId = ssAHost.getDataCenterId();
         SecondaryStorageVmVO thisSecStorageVm = _secStorageVmDao.findByInstanceName(ssAHost.getName());
         
         if (thisSecStorageVm == null) {
@@ -409,16 +419,17 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
         }
 
         String copyPort = _useSSlCopy? "443" : Integer.toString(TemplateConstants.DEFAULT_TMPLT_COPY_PORT);
-        SecStorageFirewallCfgCommand cpc = new SecStorageFirewallCfgCommand();
-        SecStorageFirewallCfgCommand thiscpc = new SecStorageFirewallCfgCommand();
+        SecStorageFirewallCfgCommand thiscpc = new SecStorageFirewallCfgCommand(true);
         thiscpc.addPortConfig(thisSecStorageVm.getPublicIpAddress(), copyPort, true, TemplateConstants.DEFAULT_TMPLT_COPY_INTF);
         
         SearchCriteriaService<HostVO, HostVO> sc = SearchCriteria2.create(HostVO.class);
-        sc.addAnd(sc.getEntity().getDataCenterId(), Op.EQ, zoneId);
         sc.addAnd(sc.getEntity().getType(), Op.EQ, Host.Type.SecondaryStorageVM);
         sc.addAnd(sc.getEntity().getStatus(), Op.IN, com.cloud.host.Status.Up, com.cloud.host.Status.Connecting);
         List<HostVO> ssvms = sc.list();
         for (HostVO ssvm : ssvms) {
+        	if (ssvm.getId() == ssAHostId) {
+        		continue;
+        	}
             Answer answer = _agentMgr.easySend(ssvm.getId(), thiscpc);
             if (answer != null && answer.getResult()) {
                 if (s_logger.isDebugEnabled()) {
@@ -432,7 +443,15 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
             }
         }
         
-        Answer answer = _agentMgr.easySend(ssAHostId, cpc);
+        SecStorageFirewallCfgCommand allSSVMIpList = new SecStorageFirewallCfgCommand(false);
+        for (HostVO ssvm : ssvms) {
+        	if (ssvm.getId() == ssAHostId) {
+        		continue;
+        	}
+        	allSSVMIpList.addPortConfig(ssvm.getPublicIpAddress(), copyPort, true, TemplateConstants.DEFAULT_TMPLT_COPY_INTF);
+        }
+        
+        Answer answer = _agentMgr.easySend(ssAHostId, allSSVMIpList);
         if (answer != null && answer.getResult()) {
             if (s_logger.isDebugEnabled()) {
                 s_logger.debug("Successfully programmed firewall rules into " + thisSecStorageVm.getHostName());
@@ -1039,6 +1058,10 @@ public class SecondaryStorageManagerImpl implements SecondaryStorageVmManager, V
         String externalDhcpStr = _configDao.getValue("direct.attach.network.externalIpAllocator.enabled");
         if (externalDhcpStr != null && externalDhcpStr.equalsIgnoreCase("true")) {
             externalDhcp = true;
+        }
+        
+        if (Boolean.valueOf(_configDao.getValue("system.vm.random.password"))) {
+        	buf.append(" vmpassword=").append(_configDao.getValue("system.vm.password"));
         }
 
         for (NicProfile nic : profile.getNics()) {

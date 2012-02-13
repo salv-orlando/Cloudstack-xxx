@@ -28,10 +28,10 @@ import com.cloud.api.BaseListCmd;
 import com.cloud.api.IdentityMapper;
 import com.cloud.api.Implementation;
 import com.cloud.api.Parameter;
-import com.cloud.api.BaseCmd.CommandType;
 import com.cloud.api.response.CapacityResponse;
 import com.cloud.api.response.ListResponse;
 import com.cloud.capacity.Capacity;
+import com.cloud.exception.InvalidParameterValueException;
 
 @Implementation(description="Lists all the system wide capacities.", responseObject=CapacityResponse.class)
 public class ListCapacityCmd extends BaseListCmd {
@@ -54,12 +54,12 @@ public class ListCapacityCmd extends BaseListCmd {
     private Long podId;
     
     @IdentityMapper(entityTableName="cluster")
-    @Parameter(name=ApiConstants.CLUSTER_ID, type=CommandType.LONG, description="lists capacity by the Cluster ID")
+    @Parameter(name=ApiConstants.CLUSTER_ID, type=CommandType.LONG, since="3.0.0", description="lists capacity by the Cluster ID")
     private Long clusterId;
 
-    @Parameter(name=ApiConstants.FETCH_LATEST, type=CommandType.BOOLEAN, description="recalculate capacities and fetch the latest")
+    @Parameter(name=ApiConstants.FETCH_LATEST, type=CommandType.BOOLEAN, since="3.0.0", description="recalculate capacities and fetch the latest")
     private Boolean fetchLatest;
-    
+        
     @Parameter(name=ApiConstants.TYPE, type=CommandType.INTEGER, description="lists capacity by type" +
     																		 "* CAPACITY_TYPE_MEMORY = 0" +
     																		 "* CAPACITY_TYPE_CPU = 1" +
@@ -73,6 +73,9 @@ public class ListCapacityCmd extends BaseListCmd {
     																		 "* CAPACITY_TYPE_LOCAL_STORAGE = 9.")
 
     private Integer type;
+    
+    @Parameter(name=ApiConstants.SORT_BY, type=CommandType.STRING, since="3.0.0", description="Sort the results. Available values: Usage")
+    private String sortBy;
 
     /////////////////////////////////////////////////////
     /////////////////// Accessors ///////////////////////
@@ -97,7 +100,18 @@ public class ListCapacityCmd extends BaseListCmd {
 	public Integer getType() {
         return type;
     }
-
+	
+    public String getSortBy() {
+        if (sortBy != null) {
+            if (sortBy.equalsIgnoreCase("usage")) {
+                return sortBy;
+            } else {
+                throw new InvalidParameterValueException("Only value supported for sortBy parameter is : usage");
+            }
+        }
+        
+        return null;
+    }
 
     /////////////////////////////////////////////////////
     /////////////// API Implementation///////////////////
@@ -110,7 +124,13 @@ public class ListCapacityCmd extends BaseListCmd {
     
     @Override
     public void execute(){
-        List<? extends Capacity> result = _mgr.listCapacities(this);
+        List<? extends Capacity> result = null;
+        if (getSortBy() != null) {
+            result = _mgr.listTopConsumedResources(this);
+        } else {
+            result = _mgr.listCapacities(this);
+        }
+        
         ListResponse<CapacityResponse> response = new ListResponse<CapacityResponse>();
         List<CapacityResponse> capacityResponses = _responseGenerator.createCapacityResponse(result, s_percentFormat);
         response.setResponses(capacityResponses);

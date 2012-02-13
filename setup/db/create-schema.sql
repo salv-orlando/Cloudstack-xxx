@@ -208,7 +208,6 @@ CREATE TABLE `cloud`.`networks` (
   `network_domain` varchar(255) COMMENT 'domain',
   `reservation_id` char(40) COMMENT 'reservation id',
   `guest_type` char(32) COMMENT 'type of guest network that can be shared or isolated',
-  `specified_cidr` int(1) unsigned NOT NULL DEFAULT 0 COMMENT '1 if the CIDR/gateway/vlan are specified in this network',
   `restart_required` int(1) unsigned NOT NULL DEFAULT 0 COMMENT '1 if restart is required for the network',
   `created` datetime NOT NULL COMMENT 'date created',
   `removed` datetime COMMENT 'date removed if not null',
@@ -527,6 +526,7 @@ CREATE TABLE  `cloud`.`data_center` (
   `netmask` varchar(15),
   `router_mac_address` varchar(17) NOT NULL DEFAULT '02:00:00:00:00:01' COMMENT 'mac address for the router within the domain',
   `mac_address` bigint unsigned NOT NULL DEFAULT '1' COMMENT 'Next available mac address for the ethernet card interacting with public internet',
+  `guest_network_cidr` varchar(18),
   `domain` varchar(100) COMMENT 'Network domain name of the Vms of the zone',
   `domain_id` bigint unsigned COMMENT 'domain id for the parent domain to this zone (null signifies public zone)',
   `networktype` varchar(255) NOT NULL DEFAULT 'Basic' COMMENT 'Network type of the zone',
@@ -1039,9 +1039,7 @@ CREATE TABLE  `cloud`.`vm_instance` (
   CONSTRAINT `fk_vm_instance__template_id` FOREIGN KEY `fk_vm_instance__template_id` (`vm_template_id`) REFERENCES `vm_template` (`id`),
   INDEX `i_vm_instance__template_id`(`vm_template_id`),
   CONSTRAINT `fk_vm_instance__account_id` FOREIGN KEY `fk_vm_instance__account_id` (`account_id`) REFERENCES `account` (`id`),
-  INDEX `i_vm_instance__account_id`(`account_id`),
   CONSTRAINT `fk_vm_instance__service_offering_id` FOREIGN KEY `fk_vm_instance__service_offering_id` (`service_offering_id`) REFERENCES `service_offering` (`id`),
-  INDEX `i_vm_instance__service_offering_id`(`service_offering_id`),
   CONSTRAINT `uc_vm_instance_uuid` UNIQUE (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
@@ -1252,6 +1250,7 @@ CREATE TABLE `cloud`.`op_host_capacity` (
   `reserved_capacity` bigint signed NOT NULL,
   `total_capacity` bigint signed NOT NULL,
   `capacity_type` int(1) unsigned NOT NULL,
+  `capacity_state` varchar(32) NOT NULL DEFAULT 'Enabled' COMMENT 'Is this capacity enabled for allocation for new resources',
   `update_time` datetime COMMENT 'time the capacity was last updated',
   `created` datetime COMMENT  'date created',
   PRIMARY KEY  (`id`),
@@ -1812,8 +1811,9 @@ CREATE TABLE `cloud`.`keystore` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT 'id',
   `name` varchar(64) NOT NULL COMMENT 'unique name for the certifiation',
   `certificate` text NOT NULL COMMENT 'the actual certificate being stored in the db',
-  `key` text NOT NULL COMMENT 'private key associated wih the certificate',
+  `key` text COMMENT 'private key associated wih the certificate',
   `domain_suffix` varchar(256) NOT NULL COMMENT 'DNS domain suffix associated with the certificate',
+  `seq` int,
   PRIMARY KEY (`id`),
   UNIQUE(name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

@@ -160,7 +160,6 @@ public enum Config {
 	PingInterval("Advanced", AgentManager.class, Integer.class, "ping.interval", "60", "Ping interval in seconds", null),
 	PingTimeout("Advanced", AgentManager.class, Float.class, "ping.timeout", "2.5", "Multiplier to ping.interval before announcing an agent has timed out", null),
 	ClusterDeltaSyncInterval("Advanced", AgentManager.class, Integer.class, "sync.interval", "60", "Cluster Delta sync interval in seconds", null),
-	ClusterFullSyncSkipSteps("Advanced", AgentManager.class, Integer.class, "skip.steps", "60", "Cluster full sync skip steps count", null),
 	Port("Advanced", AgentManager.class, Integer.class, "port", "8250", "Port to listen on for agent connection.", null),
 	RouterCpuMHz("Advanced", NetworkManager.class, Integer.class, "router.cpu.mhz", String.valueOf(VirtualNetworkApplianceManager.DEFAULT_ROUTER_CPU_MHZ), "Default CPU speed (MHz) for router VM.", null),
 	RestartRetryInterval("Advanced", HighAvailabilityManager.class, Integer.class, "restart.retry.interval", "600", "Time (in seconds) between retries to restart a vm", null),
@@ -183,7 +182,8 @@ public enum Config {
 	SystemVMUseLocalStorage("Advanced", ManagementServer.class, Boolean.class, "system.vm.use.local.storage", "false", "Indicates whether to use local storage pools or shared storage pools for system VMs.", null),
     SystemVMAutoReserveCapacity("Advanced", ManagementServer.class, Boolean.class, "system.vm.auto.reserve.capacity", "true", "Indicates whether or not to automatically reserver system VM standby capacity.", null),
 	SystemVMDefaultHypervisor("Advanced", ManagementServer.class, String.class, "system.vm.default.hypervisor", null, "Hypervisor type used to create system vm", null),
-    CPUOverprovisioningFactor("Advanced", ManagementServer.class, String.class, "cpu.overprovisioning.factor", "1", "Used for CPU overprovisioning calculation; available CPU will be (actualCpuCapacity * cpu.overprovisioning.factor)", null),
+    SystemVMRandomPassword("Advanced", ManagementServer.class, Boolean.class, "system.vm.random.password", "false", "Randomize system vm password the first time management server starts", null),
+	CPUOverprovisioningFactor("Advanced", ManagementServer.class, String.class, "cpu.overprovisioning.factor", "1", "Used for CPU overprovisioning calculation; available CPU will be (actualCpuCapacity * cpu.overprovisioning.factor)", null),
 	MemOverprovisioningFactor("Advanced", ManagementServer.class, String.class, "mem.overprovisioning.factor", "1", "Used for memory overprovisioning calculation", null),
 	LinkLocalIpNums("Advanced", ManagementServer.class, Integer.class, "linkLocalIp.nums", "10", "The number of link local ip that needed by domR(in power of 2)", null),
 	HypervisorList("Advanced", ManagementServer.class, String.class, "hypervisor.list", HypervisorType.KVM + "," + HypervisorType.XenServer + "," + HypervisorType.VMware + "," + HypervisorType.BareMetal + "," + HypervisorType.Ovm, "The list of hypervisors that this deployment will use.", "hypervisorList"),
@@ -202,7 +202,7 @@ public enum Config {
 	SecStorageSessionMax("Advanced", AgentManager.class, Integer.class, "secstorage.session.max", "50", "The max number of command execution sessions that a SSVM can handle", null),
 	SecStorageCmdExecutionTimeMax("Advanced", AgentManager.class, Integer.class, "secstorage.cmd.execution.time.max", "30", "The max command execution time in minute", null),
 	SecStorageProxy("Advanced", AgentManager.class, String.class, "secstorage.proxy", null, "http proxy used by ssvm, in http://username:password@proxyserver:port format", null),
-
+	
 
 	DirectAttachNetworkEnabled("Advanced", ManagementServer.class, Boolean.class, "direct.attach.network.externalIpAllocator.enabled", "false", "Direct-attach VMs using external DHCP server", "true,false"),
 	DirectAttachNetworkExternalAPIURL("Advanced", ManagementServer.class, String.class, "direct.attach.network.externalIpAllocator.url", null, "Direct-attach VMs using external DHCP server (API url)", null),
@@ -219,7 +219,7 @@ public enum Config {
 	HostCapacityTypeToOrderClusters("Advanced", ManagementServer.class, String.class, "host.capacityType.to.order.clusters", "CPU", "The host capacity type (CPU or RAM) is used by deployment planner to order clusters during VM resource allocation", "CPU,RAM"),
 	ApplyAllocationAlgorithmToPods("Advanced", ManagementServer.class, Boolean.class, "apply.allocation.algorithm.to.pods", "false", "If true, deployment planner applies the allocation heuristics at pods first in the given datacenter during VM resource allocation", "true,false"),
 	VmUserDispersionWeight("Advanced", ManagementServer.class, Float.class, "vm.user.dispersion.weight", "1", "Weight for user dispersion heuristic (as a value between 0 and 1) applied to resource allocation during vm deployment. Weight for capacity heuristic will be (1 - weight of user dispersion)", null),
-    VmAllocationAlgorithm("Advanced", ManagementServer.class, String.class, "vm.allocation.algorithm", "random", "'random', 'firstfit', 'userdispersing', 'userconcentratedpod' : Order in which hosts within a cluster will be considered for VM/volume allocation.", null),
+    VmAllocationAlgorithm("Advanced", ManagementServer.class, String.class, "vm.allocation.algorithm", "random", "'random', 'firstfit', 'userdispersing', 'userconcentratedpod_random', 'userconcentratedpod_firstfit' : Order in which hosts within a cluster will be considered for VM/volume allocation.", null),
 	EndpointeUrl("Advanced", ManagementServer.class, String.class, "endpointe.url", "http://localhost:8080/client/api", "Endpointe Url", "The endpoint callback URL"),
 	ElasticLoadBalancerEnabled("Advanced", ManagementServer.class, String.class, "network.loadbalancer.basiczone.elb.enabled", "false", "Whether the load balancing service is enabled for basic zones", "true,false"),
 	ElasticLoadBalancerNetwork("Advanced", ManagementServer.class, String.class, "network.loadbalancer.basiczone.elb.network", "guest", "Whether the elastic load balancing service public ips are taken from the public or guest network", "guest,public"),
@@ -230,25 +230,25 @@ public enum Config {
     SortKeyAlgorithm("Advanced", ManagementServer.class, Boolean.class, "sortkey.algorithm", "false", "Sort algorithm for those who use sort key(template, disk offering, service offering, network offering), true means ascending sort while false means descending sort", null),
     
     // Ovm
-    OvmPublicNetwork("Advanced", ManagementServer.class, String.class, "ovm.public.network.device", null, "Specify the public bridge on host for public network", null),
-    OvmPrivateNetwork("Advanced", ManagementServer.class, String.class, "ovm.private.network.device", null, "Specify the private bridge on host for private network", null),
-    OvmGuestNetwork("Advanced", ManagementServer.class, String.class, "ovm.guest.network.device", null, "Specify the private bridge on host for private network", null),
+    OvmPublicNetwork("Hidden", ManagementServer.class, String.class, "ovm.public.network.device", null, "Specify the public bridge on host for public network", null),
+    OvmPrivateNetwork("Hidden", ManagementServer.class, String.class, "ovm.private.network.device", null, "Specify the private bridge on host for private network", null),
+    OvmGuestNetwork("Hidden", ManagementServer.class, String.class, "ovm.guest.network.device", null, "Specify the private bridge on host for private network", null),
     
 	// XenServer
-    XenPublicNetwork("Network", ManagementServer.class, String.class, "xen.public.network.device", null, "[ONLY IF THE PUBLIC NETWORK IS ON A DEDICATED NIC]:The network name label of the physical device dedicated to the public network on a XenServer host", null),
-    XenStorageNetwork1("Network", ManagementServer.class, String.class, "xen.storage.network.device1", null, "Specify when there are storage networks", null),
-    XenStorageNetwork2("Network", ManagementServer.class, String.class, "xen.storage.network.device2", null, "Specify when there are storage networks", null),
-    XenPrivateNetwork("Network", ManagementServer.class, String.class, "xen.private.network.device", null, "Specify when the private network name is different", null),
+    XenPublicNetwork("Hidden", ManagementServer.class, String.class, "xen.public.network.device", null, "[ONLY IF THE PUBLIC NETWORK IS ON A DEDICATED NIC]:The network name label of the physical device dedicated to the public network on a XenServer host", null),
+    XenStorageNetwork1("Hidden", ManagementServer.class, String.class, "xen.storage.network.device1", null, "Specify when there are storage networks", null),
+    XenStorageNetwork2("Hidden", ManagementServer.class, String.class, "xen.storage.network.device2", null, "Specify when there are storage networks", null),
+    XenPrivateNetwork("Hidden", ManagementServer.class, String.class, "xen.private.network.device", null, "Specify when the private network name is different", null),
     NetworkGuestCidrLimit("Network", NetworkManager.class, Integer.class, "network.guest.cidr.limit", "22", "size limit for guest cidr; can't be less than this value", null),
     XenSetupMultipath("Advanced", ManagementServer.class, String.class, "xen.setup.multipath", "false", "Setup the host to do multipath", null),
     XenBondStorageNic("Advanced", ManagementServer.class, String.class, "xen.bond.storage.nics", null, "Attempt to bond the two networks if found", null),
     XenHeartBeatInterval("Advanced", ManagementServer.class, Integer.class, "xen.heartbeat.interval", "60", "heartbeat to use when implementing XenServer Self Fencing", null),
-    XenGuestNetwork("Advanced", ManagementServer.class, String.class, "xen.guest.network.device", null, "Specify for guest network name label", null),
+    XenGuestNetwork("Hidden", ManagementServer.class, String.class, "xen.guest.network.device", null, "Specify for guest network name label", null),
     
     // VMware
-    VmwarePrivateNetworkVSwitch("Advanced", ManagementServer.class, String.class, "vmware.private.vswitch", null, "Specify the vSwitch on host for private network", null),
-    VmwarePublicNetworkVSwitch("Advanced", ManagementServer.class, String.class, "vmware.public.vswitch", null, "Specify the vSwitch on host for public network", null),
-    VmwareGuestNetworkVSwitch("Advanced", ManagementServer.class, String.class, "vmware.guest.vswitch", null, "Specify the vSwitch on host for guest network", null),
+    VmwarePrivateNetworkVSwitch("Hidden", ManagementServer.class, String.class, "vmware.private.vswitch", null, "Specify the vSwitch on host for private network", null),
+    VmwarePublicNetworkVSwitch("Hidden", ManagementServer.class, String.class, "vmware.public.vswitch", null, "Specify the vSwitch on host for public network", null),
+    VmwareGuestNetworkVSwitch("Hidden", ManagementServer.class, String.class, "vmware.guest.vswitch", null, "Specify the vSwitch on host for guest network", null),
     VmwareServiceConsole("Advanced", ManagementServer.class, String.class, "vmware.service.console", "Service Console", "Specify the service console network name(for ESX hosts)", null),
     VmwareManagementPortGroup("Advanced", ManagementServer.class, String.class, "vmware.management.portgroup", "Management Network", "Specify the management network name(for ESXi hosts)", null),
     VmwareAdditionalVncPortRangeStart("Advanced", ManagementServer.class, Integer.class, "vmware.additional.vnc.portrange.start", "50000", "Start port number of additional VNC port range", null),
@@ -262,9 +262,9 @@ public enum Config {
     VmwareRecycleHungWorker("Advanced", ManagementServer.class, Boolean.class, "vmware.recycle.hung.wokervm", "false", "Specify whether or not to recycle hung worker VMs", null),
     
     // KVM
-    KvmPublicNetwork("Advanced", ManagementServer.class, String.class, "kvm.public.network.device", null, "Specify the public bridge on host for public network", null),
-    KvmPrivateNetwork("Advanced", ManagementServer.class, String.class, "kvm.private.network.device", null, "Specify the private bridge on host for private network", null),
-    KvmGuestNetwork("Advanced", ManagementServer.class, String.class, "kvm.guest.network.device", null, "Specify the private bridge on host for private network", null),
+    KvmPublicNetwork("Hidden", ManagementServer.class, String.class, "kvm.public.network.device", null, "Specify the public bridge on host for public network", null),
+    KvmPrivateNetwork("Hidden", ManagementServer.class, String.class, "kvm.private.network.device", null, "Specify the private bridge on host for private network", null),
+    KvmGuestNetwork("Hidden", ManagementServer.class, String.class, "kvm.guest.network.device", null, "Specify the private bridge on host for private network", null),
 	// Premium
 	UsageExecutionTimezone("Premium", ManagementServer.class, String.class, "usage.execution.timezone", null, "The timezone to use for usage job execution time", null),
 	UsageStatsJobAggregationRange("Premium", ManagementServer.class, Integer.class, "usage.stats.job.aggregation.range", "1440", "The range of time for aggregating the user statistics specified in minutes (e.g. 1440 for daily, 60 for hourly.", null),

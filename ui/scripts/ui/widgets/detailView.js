@@ -1,4 +1,4 @@
-(function($, cloudStack) {
+(function($, cloudStack, _l) {
   var replaceListViewItem = function($detailView, newData) {
     var $row = $detailView.data('list-view-row');
 
@@ -235,9 +235,11 @@
           var $browser = $('#browser .container');
           var $panel = $detailView.closest('.panel');
 
-          $browser.cloudBrowser('selectPanel', {
-            panel: $panel.prev()
-          });
+          if ($detailView.is(':visible')) {
+            $browser.cloudBrowser('selectPanel', {
+              panel: $panel.prev()
+            });
+          }
         }
       });
     },
@@ -255,7 +257,7 @@
       var $inputs = $detailView.find('input, select');
       var action = args.actions[args.actionName];
       var id = $detailView.data('view-args').id;
-      var $editButton = $('<div>').addClass('button done').html('Apply').hide()
+      var $editButton = $('<div>').addClass('button done').html(_l('Apply')).hide()
             .appendTo(
               $detailView.find('.ui-tabs-panel .detail-group.actions')              
             ).fadeIn();
@@ -274,7 +276,7 @@
             var val = $input.is(':checked');
             
             $value.data('detail-view-boolean-value', val);
-            $value.html(val ? 'Yes' : 'No'); 
+            $value.html(val ? _l('Yes') : _l('No')); 
           }
           else if ($input.is('select')) {
             $value.html(
@@ -435,7 +437,7 @@
 
     if (isCustom) {
       $browser.cloudBrowser('addPanel', {
-        title: viewAllID.label,
+        title: _l(viewAllID.label),
         maximizeIfSelected: true,
         complete: function($newPanel) {
           $newPanel.append(
@@ -485,7 +487,7 @@
 
     // Make panel
     var $panel = $browser.cloudBrowser('addPanel', {
-      title: listViewArgs.title,
+      title: _l(listViewArgs.title),
       data: '',
       noSelectPanel: true,
       maximizeIfSelected: true,
@@ -530,8 +532,8 @@
         var $actionLink = $('<a></a>')
               .attr({
                 href: '#',
-                title: value.label,
-                alt: value.label,
+                title: _l(value.label),
+                alt: _l(value.label),
                 'detail-action': key
               })
               .data('detail-view-action-callback', value.action)
@@ -633,7 +635,7 @@
           isOddRow = true;
         }
 
-        $name.html(value.label);
+        $name.html(_l(value.label));
         $value.html(content);
 
         // Set up editable metadata
@@ -700,7 +702,7 @@
               .attr({ href: '#' })
               .data('detail-view-link-view-all', detailViewArgs.viewAll)
               .append(
-                $('<span>').html('View ' + detailViewArgs.viewAll.label)
+                $('<span>').html(_l('label.view') + ' ' + _l(detailViewArgs.viewAll.label))
               )
           )
           .append(
@@ -844,7 +846,7 @@
 
       var $tabLink = $('<a></a>').attr({
         href: '#details-tab-' + propGroup
-      }).html(title).appendTo($tab);
+      }).html(_l(title)).appendTo($tab);
 
       var $tabContent = $('<div>').attr({
         id: 'details-tab-' + propGroup
@@ -878,7 +880,7 @@
         $('<div>')
           .addClass('button refresh')
           .append(
-            $('<span>').html('Refresh')
+            $('<span>').html(_l('Refresh'))
           )
       );
   };
@@ -980,4 +982,4 @@
 
     return true;
   });
-}(jQuery, cloudStack));
+}(window.jQuery, window.cloudStack, window._l));

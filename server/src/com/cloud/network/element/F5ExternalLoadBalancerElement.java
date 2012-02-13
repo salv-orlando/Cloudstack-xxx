@@ -1,6 +1,6 @@
 /**
  * *  Copyright (C) 2011 Citrix Systems, Inc.  All rights reserved
-*
+ *
  *
  * This software is licensed under the GNU General Public License v3 or later.
  *
@@ -38,8 +38,9 @@ import com.cloud.api.commands.ListExternalLoadBalancersCmd;
 import com.cloud.api.commands.ListF5LoadBalancerNetworksCmd;
 import com.cloud.api.commands.ListF5LoadBalancersCmd;
 import com.cloud.api.response.F5LoadBalancerResponse;
+import com.cloud.configuration.Config;
 import com.cloud.configuration.ConfigurationManager;
-import com.cloud.dc.DataCenter;
+import com.cloud.configuration.dao.ConfigurationDao;
 import com.cloud.dc.DataCenterVO;
 import com.cloud.dc.dao.DataCenterDao;
 import com.cloud.deploy.DeployDestination;
@@ -55,15 +56,15 @@ import com.cloud.host.dao.HostDetailsDao;
 import com.cloud.network.ExternalLoadBalancerDeviceManager;
 import com.cloud.network.ExternalLoadBalancerDeviceManagerImpl;
 import com.cloud.network.ExternalLoadBalancerDeviceVO;
-import com.cloud.network.NetworkExternalLoadBalancerVO;
-import com.cloud.network.NetworkVO;
 import com.cloud.network.ExternalLoadBalancerDeviceVO.LBDeviceState;
 import com.cloud.network.ExternalNetworkDeviceManager.NetworkDevice;
 import com.cloud.network.Network;
 import com.cloud.network.Network.Capability;
 import com.cloud.network.Network.Provider;
 import com.cloud.network.Network.Service;
+import com.cloud.network.NetworkExternalLoadBalancerVO;
 import com.cloud.network.NetworkManager;
+import com.cloud.network.NetworkVO;
 import com.cloud.network.Networks.TrafficType;
 import com.cloud.network.PhysicalNetworkServiceProvider;
 import com.cloud.network.PhysicalNetworkVO;
@@ -80,6 +81,7 @@ import com.cloud.network.rules.LbStickinessMethod.StickinessMethodType;
 import com.cloud.offering.NetworkOffering;
 import com.cloud.resource.ServerResource;
 import com.cloud.server.api.response.ExternalLoadBalancerResponse;
+import com.cloud.utils.NumbersUtil;
 import com.cloud.utils.component.Inject;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.NicProfile;
@@ -88,35 +90,47 @@ import com.cloud.vm.VirtualMachine;
 import com.cloud.vm.VirtualMachineProfile;
 import com.google.gson.Gson;
 
-@Local(value=NetworkElement.class)
+@Local(value = NetworkElement.class)
 public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceManagerImpl implements LoadBalancingServiceProvider, IpDeployer, F5ExternalLoadBalancerElementService, ExternalLoadBalancerDeviceManager {
 
     private static final Logger s_logger = Logger.getLogger(F5ExternalLoadBalancerElement.class);
-    
-    @Inject NetworkManager _networkManager;
-    @Inject ConfigurationManager _configMgr;
-    @Inject NetworkServiceMapDao _ntwkSrvcDao;
-    @Inject DataCenterDao _dcDao;
-    @Inject PhysicalNetworkDao _physicalNetworkDao;
-    @Inject HostDao _hostDao;
-    @Inject ExternalLoadBalancerDeviceDao _lbDeviceDao;
-    @Inject NetworkExternalLoadBalancerDao _networkLBDao;
-    @Inject NetworkDao _networkDao;
-    @Inject HostDetailsDao _detailsDao;
+
+    @Inject
+    NetworkManager _networkManager;
+    @Inject
+    ConfigurationManager _configMgr;
+    @Inject
+    NetworkServiceMapDao _ntwkSrvcDao;
+    @Inject
+    DataCenterDao _dcDao;
+    @Inject
+    PhysicalNetworkDao _physicalNetworkDao;
+    @Inject
+    HostDao _hostDao;
+    @Inject
+    ExternalLoadBalancerDeviceDao _lbDeviceDao;
+    @Inject
+    NetworkExternalLoadBalancerDao _networkLBDao;
+    @Inject
+    NetworkDao _networkDao;
+    @Inject
+    HostDetailsDao _detailsDao;
+    @Inject
+    ConfigurationDao _configDao;
 
     private boolean canHandle(Network config) {
         if (config.getGuestType() != Network.GuestType.Isolated || config.getTrafficType() != TrafficType.Guest) {
             s_logger.trace("Not handling network with Type  " + config.getGuestType() + " and traffic type " + config.getTrafficType());
             return false;
         }
-        
-        return (_networkManager.isProviderForNetwork(getProvider(), config.getId()) && 
-                _ntwkSrvcDao.canProviderSupportServiceInNetwork(config.getId(), Service.Lb, Network.Provider.F5BigIp));
+
+        return (_networkManager.isProviderForNetwork(getProvider(), config.getId()) && _ntwkSrvcDao.canProviderSupportServiceInNetwork(config.getId(), Service.Lb, Network.Provider.F5BigIp));
     }
 
     @Override
-    public boolean implement(Network guestConfig, NetworkOffering offering, DeployDestination dest, ReservationContext context) throws ResourceUnavailableException, ConcurrentOperationException, InsufficientNetworkCapacityException {
-        
+    public boolean implement(Network guestConfig, NetworkOffering offering, DeployDestination dest, ReservationContext context) throws ResourceUnavailableException, ConcurrentOperationException,
+            InsufficientNetworkCapacityException {
+
         if (!canHandle(guestConfig)) {
             return false;
         }
@@ -124,18 +138,20 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         try {
             return manageGuestNetworkWithExternalLoadBalancer(true, guestConfig);
         } catch (InsufficientCapacityException capacityException) {
-            // TODO: handle out of capacity exception in graceful manner when multiple providers are avaialble for the network
+            // TODO: handle out of capacity exception in graceful manner when multiple providers are avaialble for the
+// network
             return false;
         }
     }
 
     @Override
-    public boolean prepare(Network config, NicProfile nic, VirtualMachineProfile<? extends VirtualMachine> vm, DeployDestination dest, ReservationContext context) throws ConcurrentOperationException, InsufficientNetworkCapacityException, ResourceUnavailableException {
+    public boolean prepare(Network config, NicProfile nic, VirtualMachineProfile<? extends VirtualMachine> vm, DeployDestination dest, ReservationContext context) throws ConcurrentOperationException,
+            InsufficientNetworkCapacityException, ResourceUnavailableException {
         return true;
     }
 
     @Override
-    public boolean release(Network config, NicProfile nic, VirtualMachineProfile<? extends VirtualMachine> vm, ReservationContext context) {	
+    public boolean release(Network config, NicProfile nic, VirtualMachineProfile<? extends VirtualMachine> vm, ReservationContext context) {
         return true;
     }
 
@@ -144,75 +160,75 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         if (!canHandle(guestConfig)) {
             return false;
         }
-        
+
         try {
-            return manageGuestNetworkWithExternalLoadBalancer(false, guestConfig); 
+            return manageGuestNetworkWithExternalLoadBalancer(false, guestConfig);
         } catch (InsufficientCapacityException capacityException) {
             // TODO: handle out of capacity exception
             return false;
         }
     }
-    
+
     @Override
     public boolean destroy(Network config) {
         return true;
     }
-    
+
     @Override
-    public boolean validateLBRule(Network network, LoadBalancingRule rule) {    
+    public boolean validateLBRule(Network network, LoadBalancingRule rule) {
         return true;
     }
-    
+
     @Override
     public boolean applyLBRules(Network config, List<LoadBalancingRule> rules) throws ResourceUnavailableException {
         if (!canHandle(config)) {
             return false;
         }
-    	
-    	return applyLoadBalancerRules(config, rules);
+
+        return applyLoadBalancerRules(config, rules);
     }
-    
+
     @Override
     public Map<Service, Map<Capability, String>> getCapabilities() {
-    	 Map<Service, Map<Capability, String>> capabilities = new HashMap<Service, Map<Capability, String>>();
-    	 
-    	 // Set capabilities for LB service
-         Map<Capability, String> lbCapabilities = new HashMap<Capability, String>();
-         
-         // Specifies that the RoundRobin and Leastconn algorithms are supported for load balancing rules
-         lbCapabilities.put(Capability.SupportedLBAlgorithms, "roundrobin,leastconn");
+        Map<Service, Map<Capability, String>> capabilities = new HashMap<Service, Map<Capability, String>>();
 
-         // specifies that F5 BIG IP network element can provide shared mode only
-         lbCapabilities.put(Capability.SupportedLBIsolation, "shared");
+        // Set capabilities for LB service
+        Map<Capability, String> lbCapabilities = new HashMap<Capability, String>();
 
-         // Specifies that load balancing rules can be made for either TCP or UDP traffic
-         lbCapabilities.put(Capability.SupportedProtocols, "tcp,udp");
-         
-         // Specifies that this element can measure network usage on a per public IP basis
-         lbCapabilities.put(Capability.TrafficStatistics, "per public ip");
-         
-         // Specifies that load balancing rules can only be made with public IPs that aren't source NAT IPs
-         lbCapabilities.put(Capability.LoadBalancingSupportedIps, "additional");
+        // Specifies that the RoundRobin and Leastconn algorithms are supported for load balancing rules
+        lbCapabilities.put(Capability.SupportedLBAlgorithms, "roundrobin,leastconn");
 
-         LbStickinessMethod method;
-         List <LbStickinessMethod> methodList = new ArrayList<LbStickinessMethod>();
-         method = new LbStickinessMethod(StickinessMethodType.LBCookieBased,"This is cookie based sticky method, can be used only for http");
-         methodList.add(method);
-         method.addParam("holdtime", false, "time period for which persistence is in effect.",false);
+        // specifies that F5 BIG IP network element can provide shared mode only
+        lbCapabilities.put(Capability.SupportedLBIsolation, "shared");
 
-         method = new LbStickinessMethod(StickinessMethodType.SourceBased,"This is source based sticky method, can be used for any type of protocol.");
-         methodList.add(method);
-         method.addParam("holdtime", false, "time period for which persistence is in effect.",false);
+        // Specifies that load balancing rules can be made for either TCP or UDP traffic
+        lbCapabilities.put(Capability.SupportedProtocols, "tcp,udp");
 
-         Gson gson = new Gson();
-         String stickyMethodList = gson.toJson(methodList);
-         lbCapabilities.put(Capability.SupportedStickinessMethods,stickyMethodList);
+        // Specifies that this element can measure network usage on a per public IP basis
+        lbCapabilities.put(Capability.TrafficStatistics, "per public ip");
 
-         capabilities.put(Service.Lb, lbCapabilities);
-         
-         return capabilities;
+        // Specifies that load balancing rules can only be made with public IPs that aren't source NAT IPs
+        lbCapabilities.put(Capability.LoadBalancingSupportedIps, "additional");
+
+        LbStickinessMethod method;
+        List<LbStickinessMethod> methodList = new ArrayList<LbStickinessMethod>();
+        method = new LbStickinessMethod(StickinessMethodType.LBCookieBased, "This is cookie based sticky method, can be used only for http");
+        methodList.add(method);
+        method.addParam("holdtime", false, "time period for which persistence is in effect.", false);
+
+        method = new LbStickinessMethod(StickinessMethodType.SourceBased, "This is source based sticky method, can be used for any type of protocol.");
+        methodList.add(method);
+        method.addParam("holdtime", false, "time period for which persistence is in effect.", false);
+
+        Gson gson = new Gson();
+        String stickyMethodList = gson.toJson(methodList);
+        lbCapabilities.put(Capability.SupportedStickinessMethods, stickyMethodList);
+
+        capabilities.put(Service.Lb, lbCapabilities);
+
+        return capabilities;
     }
-    
+
     @Override
     public Provider getProvider() {
         return Provider.F5BigIp;
@@ -254,8 +270,8 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
     @Deprecated
     public Host addExternalLoadBalancer(AddExternalLoadBalancerCmd cmd) {
         Long zoneId = cmd.getZoneId();
-        DataCenterVO zone =null;
-        PhysicalNetworkVO pNetwork=null;
+        DataCenterVO zone = null;
+        PhysicalNetworkVO pNetwork = null;
         ExternalLoadBalancerDeviceVO lbDeviceVO = null;
         HostVO lbHost = null;
 
@@ -275,7 +291,7 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         lbDeviceVO = addExternalLoadBalancer(pNetwork.getId(), cmd.getUrl(), cmd.getUsername(), cmd.getPassword(), deviceType, (ServerResource) new F5BigIpResource());
 
         if (lbDeviceVO != null) {
-            lbHost =  _hostDao.findById(lbDeviceVO.getHostId());
+            lbHost = _hostDao.findById(lbDeviceVO.getHostId());
         }
 
         return lbHost;
@@ -291,8 +307,8 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
     @Deprecated
     public List<Host> listExternalLoadBalancers(ListExternalLoadBalancersCmd cmd) {
         Long zoneId = cmd.getZoneId();
-        DataCenterVO zone =null;
-        PhysicalNetworkVO pNetwork=null;
+        DataCenterVO zone = null;
+        PhysicalNetworkVO pNetwork = null;
 
         if (zoneId != null) {
             zone = _dcDao.findById(zoneId);
@@ -374,7 +390,7 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         Long physcialNetworkId = cmd.getPhysicalNetworkId();
         Long lbDeviceId = cmd.getLoadBalancerDeviceId();
         PhysicalNetworkVO pNetwork = null;
-        List<ExternalLoadBalancerDeviceVO> lbDevices = new ArrayList<ExternalLoadBalancerDeviceVO> ();
+        List<ExternalLoadBalancerDeviceVO> lbDevices = new ArrayList<ExternalLoadBalancerDeviceVO>();
 
         if (physcialNetworkId == null && lbDeviceId == null) {
             throw new InvalidParameterValueException("Either physical network Id or load balancer device Id must be specified");
@@ -434,7 +450,12 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         response.setPublicInterface(lbDetails.get("publicInterface"));
         response.setPrivateInterface(lbDetails.get("privateInterface"));
         response.setDeviceName(lbDeviceVO.getDeviceName());
-        response.setDeviceCapacity(lbDeviceVO.getCapacity());
+        if (lbDeviceVO.getCapacity() == 0) {
+            long defaultLbCapacity = NumbersUtil.parseLong(_configDao.getValue(Config.DefaultExternalLoadBalancerCapacity.key()), 50);
+            response.setDeviceCapacity(defaultLbCapacity);
+        } else {
+            response.setDeviceCapacity(lbDeviceVO.getCapacity());
+        }
         response.setInlineMode(lbDeviceVO.getIsInLineMode());
         response.setDedicatedLoadBalancer(lbDeviceVO.getIsDedicatedDevice());
         response.setProvider(lbDeviceVO.getProviderName());
@@ -442,7 +463,7 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         response.setObjectName("f5loadbalancer");
         return response;
     }
-    
+
     @Override
     public boolean verifyServicesCombination(List<String> services) {
         return true;
@@ -450,7 +471,7 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
 
     @Override
     public boolean applyIps(Network network, List<? extends PublicIpAddress> ipAddress, Set<Service> service) throws ResourceUnavailableException {
-		// return true, as IP will be associated as part of LB rule configuration
+        // return true, as IP will be associated as part of LB rule configuration
         return false;
     }
 

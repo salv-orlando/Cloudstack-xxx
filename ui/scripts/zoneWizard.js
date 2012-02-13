@@ -59,13 +59,16 @@
 				var isShown; 
 				if(args.data['network-model'] == 'Basic') {
 				  if(selectedNetworkOfferingHavingSG == true && selectedNetworkOfferingHavingEIP == true && selectedNetworkOfferingHavingELB == true) {
+            $('.conditional.elb').show();
             isShown = true;
           }			
           else {
+            $('.conditional.elb').hide();
             isShown = false;
           }	
 				}
 				else { //args.data['network-model'] == 'Advanced'
+          $('.conditional.elb').hide();
 				  isShown = true; 
 				}
 				return isShown;
@@ -73,10 +76,13 @@
 
       addNetscalerDevice: function(args) { //add Netscaler
 			  var isShown;
-				if(args.data['network-model'] == 'Basic' && (selectedNetworkOfferingHavingSG == true && selectedNetworkOfferingHavingEIP == true && selectedNetworkOfferingHavingELB == true))
+				if(args.data['network-model'] == 'Basic' && (selectedNetworkOfferingHavingSG == true && selectedNetworkOfferingHavingEIP == true && selectedNetworkOfferingHavingELB == true)) {
 				  isShown = true;
-				else
+          $('.conditional.elb').show();
+        } else {
 				  isShown= false;
+          $('.conditional.elb').hide();
+        }
 				return isShown;				
       },
 
@@ -101,10 +107,14 @@
         preFilter: function(args) {
           var $form = args.$form;
 					
-          if (args.data['network-model'] == 'Basic')            
-					  args.$form.find('[rel=networkOfferingId]').show();		           
-					else  //args.data['network-model'] == 'Advanced'      
-						args.$form.find('[rel=networkOfferingId]').hide();          
+          if (args.data['network-model'] == 'Basic') {           
+					  args.$form.find('[rel=networkOfferingId]').show();	
+						args.$form.find('[rel=guestcidraddress]').hide(); 
+          }						
+					else { //args.data['network-model'] == 'Advanced'      
+						args.$form.find('[rel=networkOfferingId]').hide();    
+            args.$form.find('[rel=guestcidraddress]').show(); 						
+					}
 
           setTimeout(function() {
             if ($form.find('input[name=ispublic]').is(':checked')) {
@@ -196,6 +206,11 @@
             label: 'Network Domain',
             desc: 'A DNS suffix that will create a custom domain name for the network that is accessed by guest VMs.'
           },
+					guestcidraddress: { 
+					  label: 'Guest CIDR', 
+						defaultValue: '10.1.1.0/24',
+						validation: { required: false }
+					},
           ispublic: {
             isReverse: true,
             isBoolean: true,
@@ -208,7 +223,7 @@
             isHidden: true,
             select: function(args) {
               $.ajax({
-                url: createURL("listDomains"),
+                url: createURL("listDomains&listAll=true"),
                 data: { viewAll: true },
                 dataType: "json",
                 async: false,
@@ -218,7 +233,7 @@
                     data: $.map(domainObjs, function(domain) {
                       return {
                         id: domain.id,
-                        description: domain.name
+                        description: domain.path
                       };
                     })
                   });
@@ -354,7 +369,7 @@
           vlanRange: {
             label: 'VLAN Range',
             range: ['vlanRangeStart', 'vlanRangeEnd'],
-            validation: { required: true, digits: true }
+            validation: { required: false, digits: true }  //Bug 13517 - AddZone wizard->Configure guest traffic: Vlan is optional
           }
 					//Advanced (end)
         }
@@ -593,12 +608,12 @@
         fields: {
           name: {
             label: 'Name',
-            validation: { required: true }
+            validation: { required: false }  // Primary storage is not required. User can use local storage instead of primary storage.
           },
 
           protocol: {
             label: 'Protocol',
-            validation: { required: true },
+            validation: { required: false }, // Primary storage is not required. User can use local storage instead of primary storage.
             select: function(args) {
               var selectedClusterObj = {
                 hypervisortype: args.context.zones[0].hypervisor
@@ -611,6 +626,7 @@
                 var items = [];
                 items.push({id: "nfs", description: "nfs"});
                 items.push({id: "SharedMountPoint", description: "SharedMountPoint"});
+								items.push({id: "clvm", description: "CLVM"});
                 args.response.success({data: items});
               }
               else if(selectedClusterObj.hypervisortype == "XenServer") {
@@ -659,7 +675,7 @@
                   $form.find('[rel=lun]').hide();
 
 									//$('li[input_group="clvm"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=volumegroup]').hide();
+									$form.find('[rel=volumegroup]').hide();
 									
                   //$('li[input_group="vmfs"]', $dialogAddPool).hide();
                   $form.find('[rel=vCenterDataCenter]').hide();
@@ -681,7 +697,7 @@
                   $form.find('[rel=lun]').hide();
 
 									//$('li[input_group="clvm"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=volumegroup]').hide();
+									$form.find('[rel=volumegroup]').hide();
 									
                   //$('li[input_group="vmfs"]', $dialogAddPool).hide();
                   $form.find('[rel=vCenterDataCenter]').hide();
@@ -703,7 +719,7 @@
                   $form.find('[rel=lun]').hide();
 
 									//$('li[input_group="clvm"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=volumegroup]').hide();													
+									$form.find('[rel=volumegroup]').hide();													
 									
                   //$('li[input_group="vmfs"]', $dialogAddPool).hide();
                   $form.find('[rel=vCenterDataCenter]').hide();
@@ -723,7 +739,7 @@
                   $form.find('[rel=lun]').css('display', 'block');
 
 									//$('li[input_group="clvm"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=volumegroup]').hide();
+									$form.find('[rel=volumegroup]').hide();
 									
                   //$('li[input_group="vmfs"]', $dialogAddPool).hide();
                   $form.find('[rel=vCenterDataCenter]').hide();
@@ -731,23 +747,23 @@
                 }			
 								else if($(this).val() == "clvm") {
 									//$("#add_pool_server_container", $dialogAddPool).hide();
-									$form.find('.form-item[rel=server]').hide();
+									$form.find('[rel=server]').hide();
 									//$dialogAddPool.find("#add_pool_nfs_server").val("localhost");
-									$form.find('.form-item[rel=server]').find(".value").find("input").val("localhost");
+									$form.find('[rel=server]').find(".value").find("input").val("localhost");
 									
 									//$('li[input_group="nfs"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=path]').hide();
+									$form.find('[rel=path]').hide();
 									
 									//$('li[input_group="iscsi"]', $dialogAddPool).hide();
-									 $form.find('.form-item[rel=iqn]').hide();
-									$form.find('.form-item[rel=lun]').hide();
+									 $form.find('[rel=iqn]').hide();
+									$form.find('[rel=lun]').hide();
 									
 									//$('li[input_group="clvm"]', $dialogAddPool).show();
-									$form.find('.form-item[rel=volumegroup]').css('display', 'inline-block');
+									$form.find('[rel=volumegroup]').css('display', 'inline-block');
 									
 									//$('li[input_group="vmfs"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=vCenterDataCenter]').hide();
-									$form.find('.form-item[rel=vCenterDataStore]').hide();
+									$form.find('[rel=vCenterDataCenter]').hide();
+									$form.find('[rel=vCenterDataStore]').hide();
 								}										
                 else if(protocol == "vmfs") {
                   //$dialogAddPool.find("#add_pool_server_container").show();
@@ -763,7 +779,7 @@
                   $form.find('[rel=lun]').hide();
 
 									//$('li[input_group="clvm"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=volumegroup]').hide();
+									$form.find('[rel=volumegroup]').hide();
 									
                   //$('li[input_group="vmfs"]', $dialogAddPool).show();
                   $form.find('[rel=vCenterDataCenter]').css('display', 'block');
@@ -784,7 +800,7 @@
                   $form.find('[rel=lun]').hide();
 
 									//$('li[input_group="clvm"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=volumegroup]').hide();													
+									$form.find('[rel=volumegroup]').hide();													
 									
                   //$('li[input_group="vmfs"]', $dialogAddPool).hide();
                   $form.find('[rel=vCenterDataCenter]').hide();
@@ -801,7 +817,7 @@
                   $form.find('[rel=lun]').hide();
 
 									//$('li[input_group="clvm"]', $dialogAddPool).hide();
-									$form.find('.form-item[rel=volumegroup]').hide();
+									$form.find('[rel=volumegroup]').hide();
 									
                   //$('li[input_group="vmfs"]', $dialogAddPool).hide();
                   $form.find('[rel=vCenterDataCenter]').hide();
@@ -814,52 +830,52 @@
           },
           server: {
             label: 'Server',
-            validation: { required: true },
+            validation: { required: false },  // Primary storage is not required. User can use local storage instead of primary storage.
             isHidden: true
           },
 
           //nfs
           path: {
             label: 'Path',
-            validation: { required: true },
+            validation: { required: false },  // Primary storage is not required. User can use local storage instead of primary storage.
             isHidden: true
           },
 
           //iscsi
           iqn: {
             label: 'Target IQN',
-            validation: { required: true },
+            validation: { required: false },  // Primary storage is not required. User can use local storage instead of primary storage.
             isHidden: true
           },
           lun: {
             label: 'LUN #',
-            validation: { required: true },
+            validation: { required: false },  // Primary storage is not required. User can use local storage instead of primary storage.
             isHidden: true
           },
 
 					//clvm
 					volumegroup: {
 						label: 'Volume Group',
-						validation: { required: true },
+						validation: { required: false },  // Primary storage is not required. User can use local storage instead of primary storage.
 						isHidden: true
 					},
 					
           //vmfs
           vCenterDataCenter: {
             label: 'vCenter Datacenter',
-            validation: { required: true },
+            validation: { required: false },  // Primary storage is not required. User can use local storage instead of primary storage.
             isHidden: true
           },
           vCenterDataStore: {
             label: 'vCenter Datastore',
-            validation: { required: true },
+            validation: { required: false },  // Primary storage is not required. User can use local storage instead of primary storage.
             isHidden: true
           },
 
           //always appear (begin)
           storageTags: {
             label: 'Storage Tags',
-            validation: { required: false }
+            validation: { required: false }   // Primary storage is not required. User can use local storage instead of primary storage.
           }
           //always appear (end)
         }
@@ -896,9 +912,11 @@
 					var array1 = [];					
 					var networkType = args.data.zone.networkType;  //"Basic", "Advanced"			
 					array1.push("&networktype=" + todb(networkType));
-					if(networkType == "Advanced") 
-						array1.push("&securitygroupenabled=false");  					
-
+					if(networkType == "Advanced") {		
+            if(args.data.zone.guestcidraddress != null && args.data.zone.guestcidraddress.length > 0)					
+              array1.push("&guestcidraddress=" + todb(args.data.zone.guestcidraddress));						
+          }
+					
 					array1.push("&name=" + todb(args.data.zone.name));
 
 					array1.push("&dns1=" + todb(args.data.zone.dns1));
@@ -1967,69 +1985,76 @@
 						});	 
 					}
 					else if(args.data.returnedZone.networktype == "Advanced") {	 //update VLAN in physical network(s) in advanced zone   	
-						var physicalNetworksHavingGuest = [];
+						var physicalNetworksHavingGuestIncludingVlan = [];
 						$(args.data.physicalNetworks).each(function(){		
-						  if(this.guestConfiguration != null) {		
-						    physicalNetworksHavingGuest.push(this);
+						  if(this.guestConfiguration != null && this.guestConfiguration.vlanRangeStart != null && this.guestConfiguration.vlanRangeStart.length > 0) {		
+						    physicalNetworksHavingGuestIncludingVlan.push(this);
 						  }
 						});
-						
-						var updatedCount = 0;
-            $(physicalNetworksHavingGuest).each(function(){
-							var vlan;
-							if(this.guestConfiguration.vlanRangeEnd == null || this.guestConfiguration.vlanRangeEnd.length == 0)
-								vlan = this.guestConfiguration.vlanRangeStart;
-							else
-								vlan = this.guestConfiguration.vlanRangeStart + "-" + this.guestConfiguration.vlanRangeEnd;
-							
-							var originalId = this.id;
-							var returnedId;
-							$(args.data.returnedPhysicalNetworks).each(function(){								  
-								if(this.originalId == originalId) {
-									returnedId = this.id;
-									return false; //break the loop
-								}
+												
+						if(physicalNetworksHavingGuestIncludingVlan.length == 0) {															
+							stepFns.addCluster({
+								data: args.data
 							});
-							
-							$.ajax({
-								url: createURL("updatePhysicalNetwork&id=" + returnedId  + "&vlan=" + todb(vlan)), 
-								dataType: "json",
-								success: function(json) {
-									var jobId = json.updatephysicalnetworkresponse.jobid;							
-									var timerKey = "asyncJob_" + jobId;							
-									$("body").everyTime(2000, timerKey, function(){
-										$.ajax({
-											url: createURL("queryAsyncJobResult&jobid=" + jobId),
-											dataType: "json",
-											success: function(json) {									
-												var result = json.queryasyncjobresultresponse;												
-												if(result.jobstatus == 0) {
-													return;
-												}
-												else {
-													$("body").stopTime(timerKey);
-													if(result.jobstatus == 1) {	
-														updatedCount++;
-														if(updatedCount == physicalNetworksHavingGuest.length) {															
-															stepFns.addCluster({
-																data: args.data
-															});
+						}						
+						else {
+							var updatedCount = 0;
+							$(physicalNetworksHavingGuestIncludingVlan).each(function(){
+								var vlan;
+								if(this.guestConfiguration.vlanRangeEnd == null || this.guestConfiguration.vlanRangeEnd.length == 0)
+									vlan = this.guestConfiguration.vlanRangeStart;
+								else
+									vlan = this.guestConfiguration.vlanRangeStart + "-" + this.guestConfiguration.vlanRangeEnd;
+								
+								var originalId = this.id;
+								var returnedId;
+								$(args.data.returnedPhysicalNetworks).each(function(){								  
+									if(this.originalId == originalId) {
+										returnedId = this.id;
+										return false; //break the loop
+									}
+								});
+								
+								$.ajax({
+									url: createURL("updatePhysicalNetwork&id=" + returnedId  + "&vlan=" + todb(vlan)), 
+									dataType: "json",
+									success: function(json) {
+										var jobId = json.updatephysicalnetworkresponse.jobid;							
+										var timerKey = "asyncJob_" + jobId;							
+										$("body").everyTime(2000, timerKey, function(){
+											$.ajax({
+												url: createURL("queryAsyncJobResult&jobid=" + jobId),
+												dataType: "json",
+												success: function(json) {									
+													var result = json.queryasyncjobresultresponse;												
+													if(result.jobstatus == 0) {
+														return;
+													}
+													else {
+														$("body").stopTime(timerKey);
+														if(result.jobstatus == 1) {	
+															updatedCount++;
+															if(updatedCount == physicalNetworksHavingGuestIncludingVlan.length) {															
+																stepFns.addCluster({
+																	data: args.data
+																});
+															}
 														}
-													}
-													else if(result.jobstatus == 2){
-														alert("error: " + fromdb(result.jobresult.errortext));
-													}
-												}										
-											},	
-											error: function(XMLHttpResponse) {
-												var errorMsg = parseXMLHttpResponse(XMLHttpResponse);
-												error('configureGuestTraffic', errorMsg, { fn: 'configureGuestTraffic', args: args });
-											}		
-										});
-									});								
-								}
-							});		
-            });			
+														else if(result.jobstatus == 2){
+															alert("error: " + fromdb(result.jobresult.errortext));
+														}
+													}										
+												},	
+												error: function(XMLHttpResponse) {
+													var errorMsg = parseXMLHttpResponse(XMLHttpResponse);
+													error('configureGuestTraffic', errorMsg, { fn: 'configureGuestTraffic', args: args });
+												}		
+											});
+										});								
+									}
+								});		
+							});	
+						}
 					}					
         },
         				
@@ -2163,6 +2188,14 @@
         },
         
         addPrimaryStorage: function(args) {
+				  var server = args.data.primaryStorage.server;				 
+					if(server == null || server.length == 0) {
+					  stepFns.addSecondaryStorage({
+							data: args.data
+						});						
+						return;
+					}
+									
           message('Creating primary storage');
 					
 					var array1 = [];
@@ -2170,8 +2203,7 @@
 					array1.push("&podId=" + args.data.returnedPod.id);
 					array1.push("&clusterid=" + args.data.returnedCluster.id);
 					array1.push("&name=" + todb(args.data.primaryStorage.name));
-
-					var server = args.data.primaryStorage.server;
+					
 					var url = null;
 					if (args.data.primaryStorage.protocol == "nfs") {
 						//var path = trim($thisDialog.find("#add_pool_path").val());

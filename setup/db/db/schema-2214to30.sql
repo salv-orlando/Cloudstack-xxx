@@ -156,6 +156,7 @@ INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Alert', 'DEFAULT', 'manageme
 INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Alert', 'DEFAULT', 'management-server', 'zone.secstorage.capacity.notificationthreshold' , .75, 'Percentage (as a value between 0 and 1) of secondary storage utilization above which alerts will be sent about low storage available.');
 INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'custom.diskoffering.size.min', '1', 'Minimum size in GB for custom disk offering');
 INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'custom.diskoffering.size.max', '1024', 'Maximum size in GB for custom disk offering');
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'system.vm.random.password', 'false', 'Randomize system vm password the first time management server starts');
 INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Network', 'DEFAULT', 'management-server', 'network.securitygroups.defaultadding' , 'true', 'If true, the user VM would be added to the default security group by default');
 
 update `cloud`.`configuration` set name = 'cluster.storage.allocated.capacity.notificationthreshold' , category = 'Alert' where name = 'storage.allocated.capacity.threshold' ;
@@ -194,7 +195,6 @@ ALTER TABLE `cloud`.`project_invitations` ADD CONSTRAINT `uc_project_invitations
 
 ALTER TABLE `cloud`.`data_center` ADD COLUMN `uuid` varchar(40); 
 ALTER TABLE `cloud`.`data_center` ADD CONSTRAINT `uc_data_center__uuid` UNIQUE (`uuid`);
-ALTER TABLE `cloud`.`data_center` DROP COLUMN `guest_network_cidr`;
 
 ALTER TABLE `cloud`.`host` ADD COLUMN `uuid` varchar(40); 
 ALTER TABLE `cloud`.`host` ADD CONSTRAINT `uc_host__uuid` UNIQUE (`uuid`);
@@ -280,8 +280,7 @@ ALTER TABLE `cloud`.`op_host_capacity` ADD COLUMN `update_time` datetime;
 
 INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'apply.allocation.algorithm.to.pods', 'false', 'If true, deployment planner applies the allocation heuristics at pods first in the given datacenter during VM resource allocation');
 INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'vm.user.dispersion.weight', 1, 'Weight for user dispersion heuristic (as a value between 0 and 1) applied to resource allocation during vm deployment. Weight for capacity heuristic will be (1 - weight of user dispersion)');
-DELETE FROM `cloud`.`configuration` WHERE name='use.user.concentrated.pod.allocation';
-update `cloud`.`configuration` SET description = '[''random'', ''firstfit'', ''userdispersing'', ''userconcentratedpod''] : Order in which hosts within a cluster will be considered for VM/volume allocation.' WHERE name = 'vm.allocation.algorithm';
+UPDATE `cloud`.`configuration` SET description = '[''random'', ''firstfit'', ''userdispersing'', ''userconcentratedpod_random'', ''userconcentratedpod_firstfit''] : Order in which resources will be considered for VM/volume allocation.' WHERE name = 'vm.allocation.algorithm';
 
 
 --;
@@ -305,7 +304,8 @@ UPDATE `cloud_usage`.`usage_network` set agg_bytes_received = net_bytes_received
 ALTER TABLE `cloud_usage`.`usage_vpn_user` ADD INDEX `i_usage_vpn_user__account_id`(`account_id`);
 ALTER TABLE `cloud_usage`.`usage_vpn_user` ADD INDEX `i_usage_vpn_user__created`(`created`);
 ALTER TABLE `cloud_usage`.`usage_vpn_user` ADD INDEX `i_usage_vpn_user__deleted`(`deleted`);
-
+ALTER TABLE `cloud_usage`.`usage_ip_address` ADD COLUMN `is_elastic` smallint(1) NOT NULL default '0';
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Premium', 'DEFAULT', 'management-server', 'usage.sanity.check.interval', null, 'Interval (in days) to check sanity of usage data');
 
 DELETE FROM `cloud`.`configuration` WHERE name='host.capacity.checker.wait';
 DELETE FROM `cloud`.`configuration` WHERE name='host.capacity.checker.interval'; 
@@ -609,6 +609,7 @@ CREATE TABLE `cloud`.`op_dc_storage_network_ip_address` (
 update `cloud`.`networks` set guru_name='StorageNetworkGuru' where traffic_type='Storage';
 
 ALTER TABLE  `cloud`.`event` ADD COLUMN `domain_id` bigint unsigned NOT NULL;
+ALTER TABLE  `cloud`.`op_host_capacity` ADD COLUMN `capacity_state` varchar(32) NOT NULL DEFAULT 'Enabled';
 UPDATE `cloud`.`event` e set e.domain_id = (select acc.domain_id from `cloud`.`account` acc where acc.id = e.account_id) where e.domain_id = 0;
 
 update `cloud`.`vm_template` set removed=now() where id=2;
@@ -625,5 +626,22 @@ ALTER TABLE `cloud`.`domain_network_ref` ADD COLUMN `subdomain_access` int(1) un
 UPDATE `cloud`.`networks` SET specify_ip_ranges=(SELECT specify_ip_ranges FROM network_offerings no where no.id=network_offering_id);
 
 
-ALTER TABLE `cloud`.`networks` ADD COLUMN `specified_cidr` int(1) unsigned NOT NULL DEFAULT 0 COMMENT '1 if the CIDR/gateway/vlan are specified in this network';
 DELETE FROM `cloud`.`configuration` WHERE name='network.redundantrouter';
+
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'xen.public.network.device';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'xen.storage.network.device1';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'xen.storage.network.device2';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'xen.private.network.device';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'xen.guest.network.device';
+
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'vmware.private.vswitch';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'vmware.public.vswitch';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'vmware.guest.vswitch';
+
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'ovm.public.network.device';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'ovm.private.network.device';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'ovm.guest.network.device';
+
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.public.network.device';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.private.network.device';
+UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.guest.network.device';

@@ -69,39 +69,39 @@
             var id = this[fields.id];
 
             var $select = $('<div>')
-                  .addClass('select')
-                  .append(
-                    $('<input>')
-                      .attr({
-                        type: (function(type) {
-                          return type ? type : 'radio';
-                        })(options ? options.type : null),
-                        name: name,
-                        'wizard-field': options['wizard-field']
-                      })
-                      .val(id)
-                      .click(function() {
-                        var $radio = $(this).closest('.select').find('input[type=radio]');
+              .addClass('select')
+              .append(
+                $('<input>')
+                  .attr({
+                    type: (function(type) {
+                      return type ? type : 'radio';
+                    })(options ? options.type : null),
+                    name: name,
+                    'wizard-field': options['wizard-field']
+                  })
+                  .val(id)
+                  .click(function() {
+                    var $radio = $(this).closest('.select').find('input[type=radio]');
 
-                        if ($radio.is(':checked') && !$(this).is(':checked')) {
-                          if (!$radio.closest('.select').index()) {
-                            return false;
-                          } else {
-                            $radio
-                              .closest('.select')
-                              .siblings().filter(':first')
-                              .find('input[type=radio]').click(); 
-                          }
-                        }
+                    if ($radio.is(':checked') && !$(this).is(':checked')) {
+                      if (!$radio.closest('.select').index()) {
+                        return false;
+                      } else {
+                        $radio
+                          .closest('.select')
+                          .siblings().filter(':first')
+                          .find('input[type=radio]').click();
+                      }
+                    }
 
-                        return true;
-                      })
-                  )
-                  .append(
-                    $('<div>').addClass('select-desc')
-                      .append($('<div>').addClass('name').html(this[fields.name]))
-                      .append($('<div>').addClass('desc').html(this[fields.desc]))
-                  );
+                    return true;
+                  })
+              )
+              .append(
+                $('<div>').addClass('select-desc')
+                  .append($('<div>').addClass('name').html(this[fields.name]))
+                  .append($('<div>').addClass('desc').html(this[fields.desc]))
+              );
 
             $selects.append($select);
 
@@ -182,7 +182,7 @@
           'select-iso': function($step, formData) {
             var originalValues = function(formData) {
               var $inputs = $step.find('.wizard-step-conditional:visible')
-                    .find('input[type=radio]');
+                .find('input[type=radio]');
               var $selected = $inputs.filter(function() {
                 return $(this).val() == formData.templateid;
               });
@@ -218,11 +218,16 @@
                       'wizard-field': 'template'
                     });
 
-                    if (type == 'isos') {
+                    if (type == 'featuredisos' || type == 'communityisos' || type == 'myisos') {
                       // Create hypervisor select
                       $selects.find('input').bind('click', function() {
                         var $select = $(this).closest('.select');
-                        $select.siblings().removeClass('selected').find('.hypervisor').remove();
+                        
+												//$select.siblings().removeClass('selected').find('.hypervisor').remove(); //SelectISO has 3 tabs now. This line only remove hypervisor div in the same tab, not enough. The following 3 lines will remove hypervisor div in all of 3 tabs.											
+												$("#instance-wizard-featured-isos .select-container div.selected").removeClass('selected').find('div.hypervisor').remove();
+												$("#instance-wizard-community-isos .select-container div.selected").removeClass('selected').find('div.hypervisor').remove();
+												$("#instance-wizard-my-isos .select-container div.selected").removeClass('selected').find('div.hypervisor').remove();
+																								
                         $select.addClass('selected').append(
                           $('<div>').addClass('hypervisor')
                             .append($('<label>').html('Hypervisor:'))
@@ -251,7 +256,11 @@
                       ['featuredtemplates', 'instance-wizard-featured-templates'],
                       ['communitytemplates', 'instance-wizard-community-templates'],
                       ['mytemplates', 'instance-wizard-my-templates'],
-                      ['isos', 'instance-wizard-my-isos']
+											
+											['featuredisos', 'instance-wizard-featured-isos'],
+                      ['communityisos', 'instance-wizard-community-isos'],
+                      ['myisos', 'instance-wizard-my-isos']
+                      //['isos', 'instance-wizard-all-isos']
                     ]
                   ).each(function() {
                     var item = this;
@@ -432,7 +441,18 @@
             });
 
             setTimeout(function() {
-              $step.find('.new-network input[type=checkbox]').click();
+              var $checkbox = $step.find('.new-network input[type=checkbox]');
+              var $newNetwork = $checkbox.closest('.new-network');
+
+              if ($step.find('.select.my-networks .select-container .select').size()) {
+                $checkbox.attr('checked', false);
+                $newNetwork.addClass('unselected');
+              } else {
+                $checkbox.attr('checked', true);
+                $newNetwork.removeClass('unselected');
+              }
+
+              $checkbox.change();
             });
 
             // Show relevant conditional sub-step if present
@@ -535,17 +555,22 @@
           var stepID = $targetStep.attr('wizard-step-id');
           var formData = cloudStack.serializeForm($form);
 
-          if (!$targetStep.hasClass('review')) { // Review row content is not autogenerated
-            $targetStep.find('.select-container:not(.fixed) div, option:not(:disabled)').remove();
-          }
+          if (!$targetStep.hasClass('loaded')) {
+            // Remove previous content
+            if (!$targetStep.hasClass('review')) { // Review row content is not autogenerated
+              $targetStep.find('.select-container:not(.fixed) div, option:not(:disabled)').remove();
+            }
 
-          dataProvider(
-            index,
-            dataGenerators[stepID](
-              $targetStep,
-              formData
-            )
-          );
+            dataProvider(
+              index,
+              dataGenerators[stepID](
+                $targetStep,
+                formData
+              )
+            );
+
+            $targetStep.addClass('loaded');
+          }
 
           // Show launch vm button if last step
           var $nextButton = $wizard.find('.button.next');
@@ -569,7 +594,6 @@
             return $(this).index() > targetIndex;
           }).fadeOut('slow');
 
-
           setTimeout(function() {
             if (!$targetStep.find('input[type=radio]:checked').size()) {
               $targetStep.find('input[type=radio]:first').click();
@@ -580,9 +604,25 @@
         // Events
         $wizard.click(function(event) {
           var $target = $(event.target);
+          var $activeStep = $form.find('.step:visible');
 
           // Next button
           if ($target.closest('div.button.next').size()) {
+            // Make sure ISO or template is selected
+            if ($activeStep.hasClass('select-iso') &&
+                !$activeStep.find('.content:visible input:checked').size()) {
+              cloudStack.dialog.notice({ message: 'message.step.1.continue' });
+              return false;
+            }
+						
+						//step 5 - select network
+						if($activeStep.find('.wizard-step-conditional.select-network:visible').size() > 0) { 
+						  if($activeStep.find('input[type=checkbox]:checked').size() == 0) {  //if no checkbox is checked
+							  cloudStack.dialog.notice({ message: 'message.step.4.continue' });
+								return false;
+							}
+						}											
+						
             if (!$form.valid()) {
               if ($form.find('input.error:visible, select.error:visible').size()) {
                 return false;
@@ -622,6 +662,17 @@
         });
 
         showStep(1);
+
+        $wizard.bind('change', function(event) {
+          var $target = $(event.target);
+          var $step = $target.closest('.step');
+          var $futureSteps = $step.siblings().filter(function() {
+            return $(this).index() > $step.index();
+          });
+            
+          // Reset all fields in futher steps
+          $futureSteps.removeClass('loaded');
+        });
 
         // Setup tabs and slider
         $wizard.find('.tab-view').tabs();

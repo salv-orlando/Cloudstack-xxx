@@ -1,4 +1,4 @@
-(function($, cloudStack) {
+(function($, cloudStack, _l) {
   /**
    * Notification handling
    */
@@ -14,16 +14,20 @@
             .append(
               $('<div>').addClass('title').append(
                 $('<span>').html(
-                  options.error ? options.error : 'Task completed'
+                  options.error ? options.error : _l('Task completed')
                 )
               )
             )
             .append(
               $('<div>').addClass('message')
                 .append(
-                  $('<span>').html(args.message)
+                  $('<span>').html(_l(args.message))
                 )
             );
+
+      if (options.error) {
+        $cornerAlert.addClass('error');
+      }
 
       return $cornerAlert
         .css({
@@ -57,7 +61,7 @@
 
       var $item = $('<li>')
             .append(
-              $('<span>').html(args.desc)
+              $('<span>').html(_l(args.desc))
             )
             .append(
               $('<div>').addClass('remove')
@@ -94,7 +98,9 @@
 
             clearInterval(pollTimer);
             notifications.activeTasks.pop(pollTimer);
-            notifications.cornerAlert({ message: $item.html() }, { error: 'Task: ERROR' });
+            notifications.cornerAlert({ message: $item.html() }, {
+              error: _l('label.error')
+            });
             $item.removeClass('pending').addClass('error');
 
             if (additionalComplete) additionalComplete();
@@ -153,7 +159,7 @@
               .addClass('notification-box')
               .append(
                 // Header
-                $('<h3>').html('Notifications')
+                $('<h3>').html(_l('Notifications'))
               )
               .append(
                 // Container
@@ -170,13 +176,13 @@
                     // Clear list
                     $('<div>').addClass('button clear-list')
                       .append(
-                        $('<span>').html('Clear List')
+                        $('<span>').html(_l('Clear List'))
                       )
                   )
                   .append(
                     $('<div>').addClass('button close')
                       .append(
-                        $('<span>').html('Close')
+                        $('<span>').html(_l('Close'))
                       )
                   )
               )
@@ -344,4 +350,4 @@
     if ($popup.size())
       notifications.popup.reposition($popup, $popup.data('notifications-attach-to'));
   });
-})(window.jQuery, cloudStack);
+})(window.jQuery, window.cloudStack, window._l);

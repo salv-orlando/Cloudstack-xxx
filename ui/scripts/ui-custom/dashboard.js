@@ -27,7 +27,7 @@
                   if ($li.is('.zone-stats li')) {
                     $li.click(function() {
                       $browser.cloudBrowser('addPanel', {
-                        title: 'Zone details',
+                        title: _l('label.zone.details'),
                         parent: $dashboard.closest('.panel'),
                         maximizeIfSelected: true,
                         complete: function($newPanel) {
@@ -41,7 +41,7 @@
                             }
                           ));
                         }
-                      })
+                      });
                     });
                   }
 
@@ -50,31 +50,37 @@
 
                     $arrayElem.each(function() {
                       var $arrayElem = $(this);
-                      
+
                       if ($arrayElem.hasClass('pie-chart')) {
                         // Generate pie chart
                         // -- values above 80 have a red color
-                        pieChart($arrayElem, [
-                          { data: [[1, 100 - arrayValue]], color: '#54697e' },
-                          { data: [[1, arrayValue]], color: arrayValue < 80 ? 'orange' : 'red' }
-                        ]);
+                        setTimeout(function() {
+                          pieChart($arrayElem, [
+                            { data: [[1, 100 - arrayValue]], color: '#54697e' },
+                            { data: [[1, arrayValue]], color: arrayValue < 80 ? 'orange' : 'red' }
+                          ]);
+                        });
                       } else {
                         if ($li.attr('concat-value')) {
-                          $arrayElem.html(arrayValue.toString().split('<br/>').map(function(val) {
+                          var val = $(_l(arrayValue).toString().split('<br/>')).map(function() {
+                            var val = this.toString();
                             var concatValue = parseInt($li.attr('concat-value'));
-                            
-                            return val.length >= concatValue ? val.substring(0, concatValue).concat('...') : val;
-                          }).join('<br/>'));
+
+                            return val.length >= concatValue ?
+                              val.substring(0, concatValue).concat('...') : val;
+                          }).toArray().join('<br/>');
+
+                          $arrayElem.html(val);
                         } else {
-                          $arrayElem.html(arrayValue);
+                          $arrayElem.html(_l(arrayValue));
                         }
 
-                        $arrayElem.attr('title', arrayValue.toString().replace('<br/>', ', '));
+                        $arrayElem.attr('title', _l(arrayValue).toString().replace('<br/>', ', '));
                       }
                     });
                   });
 
-                  $li.attr({ title: item.description });
+                  $li.attr({ title: _l(item.description) });
 
                   $li.fadeIn();
                 });
@@ -125,10 +131,30 @@
     // Get dashboard layout
     var $dashboard = $('#template').find('div.dashboard.' + dashboardType).clone();
 
+    // Update text
+    $dashboard.find('.button.view-all').html(_l('label.view.all'));
+    $dashboard.find('.dashboard-container.sub.alerts.first .top .title span').html(_l('label.general.alerts'));
+    $dashboard.find('.dashboard-container.sub.alerts.last .top .title span').html(_l('label.host.alerts'));
+    $dashboard.find('.dashboard-container.head .top .title span').html(_l('label.system.capacity'));
+
     // View all action
     $dashboard.find('.view-all').click(function() {
+      var $browser = $('#browser .container');
+
       if ($(this).hasClass('network')) $('#navigation li.network').click();
-      else $('#navigation li.events').click();
+      else {
+        $browser.cloudBrowser('addPanel', {
+          title: 'Alerts',
+          maximizeIfSelected: true,
+          complete: function($newPanel) {
+            $newPanel.listView({
+              $browser: $browser,
+              context: cloudStack.context,
+              listView: cloudStack.sections.events.sections.alerts.listView
+            });
+          }
+        });
+      };
     });
 
 

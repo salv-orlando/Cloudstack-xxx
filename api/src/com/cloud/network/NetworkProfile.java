@@ -24,7 +24,6 @@ import com.cloud.network.Networks.BroadcastDomainType;
 import com.cloud.network.Networks.Mode;
 import com.cloud.network.Networks.TrafficType;
 
-
 public class NetworkProfile implements Network {
     private long id;
     private long dataCenterId;
@@ -48,7 +47,6 @@ public class NetworkProfile implements Network {
     private Network.GuestType guestType;
     private Long physicalNetworkId;
     private ACLType aclType;
-    private boolean specifiedCidr;
     private boolean restartRequired;
     private boolean specifyIpRanges;
 
@@ -73,7 +71,6 @@ public class NetworkProfile implements Network {
         this.guestType = network.getGuestType();
         this.physicalNetworkId = network.getPhysicalNetworkId();
         this.aclType = network.getAclType();
-        this.specifiedCidr = network.isSpecifiedCidr();
         this.restartRequired = network.isRestartRequired();
         this.specifyIpRanges = network.getSpecifyIpRanges();
     }
@@ -167,7 +164,7 @@ public class NetworkProfile implements Network {
     public String getDisplayText() {
         return displayText;
     }
-    
+
     @Override
     public String getReservationId() {
         return reservationId;
@@ -182,9 +179,9 @@ public class NetworkProfile implements Network {
     public long getDomainId() {
         return domainId;
     }
-    
+
     @Override
-    public Network.GuestType getGuestType(){
+    public Network.GuestType getGuestType() {
         return guestType;
     }
 
@@ -199,29 +196,20 @@ public class NetworkProfile implements Network {
     }
 
     @Override
-	public ACLType getAclType() {
-		return aclType;
-	}
-    
-	@Override
-    public boolean isSpecifiedCidr() {
-        return specifiedCidr;
+    public ACLType getAclType() {
+        return aclType;
     }
 
-    public void setSpecifiedCidr(boolean specifiedCidr) {
-        this.specifiedCidr = specifiedCidr;
+    @Override
+    public boolean isRestartRequired() {
+        // TODO Auto-generated method stub
+        return false;
     }
 
-	@Override
-	public boolean isRestartRequired() {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public boolean getSpecifyIpRanges() {
-		// TODO Auto-generated method stub
-		return false;
-	}
+    @Override
+    public boolean getSpecifyIpRanges() {
+        // TODO Auto-generated method stub
+        return false;
+    }
 
 }

@@ -1,7 +1,7 @@
 (function($, cloudStack) {
   // Admin dashboard
   cloudStack.sections.dashboard = {
-    title: 'Dashboard',
+    title: 'label.menu.dashboard',
     show: cloudStack.uiCustom.dashboard,
 
     adminCheck: function(args) {
@@ -104,7 +104,7 @@
       zoneDetailView: {
         tabs: {
           resources: {
-            title: 'Resources',
+            title: 'label.resources',
             custom: cloudStack.uiCustom.systemChart('resources')
           }
         }
@@ -213,7 +213,7 @@
                   hostAlerts: $.map(hosts, function(host) {
                     return {
                       name: host.name,
-                      description: 'Alert state detected for ' + host.name
+                      description: 'message.alert.state.detected'
                     };
                   })
                 }));
@@ -223,73 +223,29 @@
 
           zoneCapacity: function(data) {
             $.ajax({
-              url: createURL('listZones'),
+              url: createURL('listCapacity'),
               data: {
-                showCapacities: true
+                sortBy: 'usage',
+                page: 0,
+                pagesize: 8
               },
               success: function(json) {
-                var zones = json.listzonesresponse.zone ?
-                  json.listzonesresponse.zone : [];
-
-                var zoneCapacities = [];
-
-                $(zones).each(function() {
-                  var zone = this;
-                  var clusters;
-
-                  // Get cluster-level data
-                  $.ajax({
-                    url: createURL('listClusters'),
-                    data: {
-                      zoneId: zone.id,
-                      showCapacities: true
-                    },
-                    async: false,
-                    success: function(json) {
-                      var cluster = json.listclustersresponse.cluster;
-
-                      // Get cluster-level data
-                      $(cluster).each(function() {
-                        var cluster = this;
-
-                        $(cluster.capacity).each(function() {
-                          var capacity = this;
-
-                          zoneCapacities.push($.extend(capacity, {
-                            zoneName: zone.name +
-                              '<br/>Pod: ' + cluster.podname +
-                              '<br/>Cluster: ' + cluster.name
-                          }));
-                        });
-                      });
-
-                      // Get zone-level data
-                      $(zone.capacity).each(function() {
-                        var capacity = this;
-                        var existingCapacityTypes = $.map(zoneCapacities, function(capacity) {
-                          return capacity.type;
-                        });
-                        var isExistingCapacity = $.inArray(capacity.type, existingCapacityTypes) > -1;
-
-                        if (!isExistingCapacity) {
-                          zoneCapacities.push($.extend(capacity, {
-                            zoneName: zone.name
-                          }));
-                        }
-                      });
-                    }
-                  });
-                });
-
-                var sortFn = function(a, b) {
-                  return parseInt(a.percentused) < parseInt(b.percentused);
-                };
+                var capacities = json.listcapacityresponse.capacity ?
+                  json.listcapacityresponse.capacity : [];
 
                 complete($.extend(data, {
-                  zoneCapacities: $.map(zoneCapacities.sort(sortFn), function(capacity) {
+                  zoneCapacities: $.map(capacities, function(capacity) {
+                    if (capacity.podname) {
+                      capacity.zonename = capacity.zonename.concat('<br/>Pod: ' + capacity.podname);
+                    }
+
+                    if (capacity.clustername) {
+                      capacity.zonename = capacity.zonename.concat('<br/>Cluster: ' + capacity.clustername);
+                    }
+
                     return {
-                      zoneID: zones[0].id, // Temporary fix for dashboard
-                      zoneName: capacity.zoneName,
+                      zoneID: capacity.zoneid, // Temporary fix for dashboard
+                      zoneName: capacity.zonename,
                       type: cloudStack.converters.toAlertType(capacity.type),
                       percent: parseInt(capacity.percentused),
                       used: cloudStack.converters.convertByType(capacity.type, capacity.capacityused),

@@ -58,6 +58,7 @@ import com.cloud.utils.component.AdapterBase;
 import com.cloud.utils.component.Inject;
 import com.cloud.utils.db.DB;
 import com.cloud.utils.db.Transaction;
+import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.net.Ip4Address;
 import com.cloud.utils.net.NetUtils;
 import com.cloud.vm.Nic.ReservationStrategy;
@@ -132,16 +133,31 @@ public class GuestNetworkGuru extends AdapterBase implements NetworkGuru {
             }
 
             if (userSpecified.getCidr() != null) {
-                //TODO add cidr checking
                 network.setCidr(userSpecified.getCidr());
                 network.setGateway(userSpecified.getGateway());
-                network.setSpecifiedCidr(true);
+            } else {
+                String guestNetworkCidr = dc.getGuestNetworkCidr();
+                if (guestNetworkCidr != null) {
+                    String[] cidrTuple = guestNetworkCidr.split("\\/");
+                    network.setGateway(NetUtils.getIpRangeStartIpFromCidr(cidrTuple[0], Long.parseLong(cidrTuple[1])));
+                    network.setCidr(guestNetworkCidr);
+                } else if (dc.getNetworkType() == NetworkType.Advanced) {
+                    throw new CloudRuntimeException("Can't design network " + network + "; guest CIDR is not configured per zone " + dc);
+                }
             }
 
             if (offering.getSpecifyVlan()) {
                 network.setBroadcastUri(userSpecified.getBroadcastUri());
                 network.setState(State.Setup);
             }
+        } else {
+            String guestNetworkCidr = dc.getGuestNetworkCidr();
+            if (guestNetworkCidr == null && dc.getNetworkType() == NetworkType.Advanced) {
+                throw new CloudRuntimeException("Can't design network " + network + "; guest CIDR is not configured per zone " + dc);
+            }
+            String[] cidrTuple = guestNetworkCidr.split("\\/");
+            network.setGateway(NetUtils.getIpRangeStartIpFromCidr(cidrTuple[0], Long.parseLong(cidrTuple[1])));
+            network.setCidr(guestNetworkCidr);
         }
 
         return network;
@@ -302,27 +318,25 @@ public class GuestNetworkGuru extends AdapterBase implements NetworkGuru {
         DataCenter dc = _dcDao.findById(network.getDataCenterId());
 
         if (nic.getIp4Address() == null) {
-            if (network.isSpecifiedCidr()) {
-                nic.setBroadcastUri(network.getBroadcastUri());
-                nic.setIsolationUri(network.getBroadcastUri());
-                nic.setGateway(network.getGateway());
+            nic.setBroadcastUri(network.getBroadcastUri());
+            nic.setIsolationUri(network.getBroadcastUri());
+            nic.setGateway(network.getGateway());
 
-                String guestIp = null;
-                if (network.getSpecifyIpRanges()) {
-                    _networkMgr.allocateDirectIp(nic, dc, vm, network, nic.getRequestedIp());
-                } else {
-                    guestIp = _networkMgr.acquireGuestIpAddress(network, nic.getRequestedIp());
-                    if (guestIp == null) {
-                        throw new InsufficientVirtualNetworkCapcityException("Unable to acquire Guest IP address for network " + network, DataCenter.class, dc.getId());
-                    }
-
-                    nic.setIp4Address(guestIp);
-                    nic.setNetmask(NetUtils.cidr2Netmask(network.getCidr()));
-
-                    nic.setDns1(dc.getDns1());
-                    nic.setDns2(dc.getDns2());
-                    nic.setFormat(AddressFormat.Ip4);
+            String guestIp = null;
+            if (network.getSpecifyIpRanges()) {
+                _networkMgr.allocateDirectIp(nic, dc, vm, network, nic.getRequestedIp());
+            } else {
+                guestIp = _networkMgr.acquireGuestIpAddress(network, nic.getRequestedIp());
+                if (guestIp == null) {
+                    throw new InsufficientVirtualNetworkCapcityException("Unable to acquire Guest IP address for network " + network, DataCenter.class, dc.getId());
                 }
+
+                nic.setIp4Address(guestIp);
+                nic.setNetmask(NetUtils.cidr2Netmask(network.getCidr()));
+
+                nic.setDns1(dc.getDns1());
+                nic.setDns2(dc.getDns2());
+                nic.setFormat(AddressFormat.Ip4);
             }
         }
 

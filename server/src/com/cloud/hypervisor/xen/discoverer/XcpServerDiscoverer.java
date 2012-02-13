@@ -29,6 +29,7 @@ import java.util.Set;
 
 import javax.ejb.Local;
 import javax.naming.ConfigurationException;
+import javax.persistence.EntityExistsException;
 
 import org.apache.log4j.Logger;
 import org.apache.xmlrpc.XmlRpcException;
@@ -46,11 +47,9 @@ import com.cloud.agent.api.StartupCommand;
 import com.cloud.agent.api.StartupRoutingCommand;
 import com.cloud.alert.AlertManager;
 import com.cloud.configuration.Config;
-import com.cloud.configuration.dao.ConfigurationDao;
 import com.cloud.dc.ClusterVO;
 import com.cloud.dc.DataCenterVO;
 import com.cloud.dc.HostPodVO;
-import com.cloud.dc.dao.ClusterDao;
 import com.cloud.dc.dao.DataCenterDao;
 import com.cloud.dc.dao.HostPodDao;
 import com.cloud.exception.AgentUnavailableException;
@@ -62,7 +61,6 @@ import com.cloud.host.HostEnvironment;
 import com.cloud.host.HostInfo;
 import com.cloud.host.HostVO;
 import com.cloud.host.Status;
-import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.Hypervisor;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
 import com.cloud.hypervisor.xen.resource.CitrixResourceBase;
@@ -78,7 +76,6 @@ import com.cloud.resource.ResourceManager;
 import com.cloud.resource.ResourceStateAdapter;
 import com.cloud.resource.ServerResource;
 import com.cloud.resource.UnableDeleteHostException;
-import com.cloud.resource.ResourceStateAdapter.DeleteHostAnswer;
 import com.cloud.storage.Storage.ImageFormat;
 import com.cloud.storage.Storage.TemplateType;
 import com.cloud.storage.VMTemplateVO;
@@ -87,6 +84,9 @@ import com.cloud.storage.dao.VMTemplateHostDao;
 import com.cloud.user.Account;
 import com.cloud.utils.NumbersUtil;
 import com.cloud.utils.component.Inject;
+import com.cloud.utils.db.SearchCriteria.Op;
+import com.cloud.utils.db.SearchCriteria2;
+import com.cloud.utils.db.SearchCriteriaService;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.exception.HypervisorVersionChangedException;
 import com.xensource.xenapi.Connection;
@@ -112,11 +112,8 @@ public class XcpServerDiscoverer extends DiscovererBase implements Discoverer, L
 
     @Inject protected AlertManager _alertMgr;
     @Inject protected AgentManager _agentMgr;
-    @Inject protected HostDao _hostDao;
     @Inject VMTemplateDao _tmpltDao;
     @Inject VMTemplateHostDao _vmTemplateHostDao;
-    @Inject ClusterDao _clusterDao;
-    @Inject protected ConfigurationDao _configDao;
     @Inject ResourceManager _resourceMgr;
     @Inject HostPodDao _podDao;
     @Inject DataCenterDao _dcDao;
@@ -124,6 +121,26 @@ public class XcpServerDiscoverer extends DiscovererBase implements Discoverer, L
     protected XcpServerDiscoverer() {
     }
     
+    void setClusterGuid(ClusterVO cluster, String guid) {
+        cluster.setGuid(guid);
+        try {
+            _clusterDao.update(cluster.getId(), cluster);
+        } catch (EntityExistsException e) {
+            SearchCriteriaService<ClusterVO, ClusterVO> sc = SearchCriteria2.create(ClusterVO.class);
+            sc.addAnd(sc.getEntity().getGuid(), Op.EQ, guid);
+            List<ClusterVO> clusters = sc.list();
+            ClusterVO clu = clusters.get(0);
+            List<HostVO> clusterHosts = _resourceMgr.listAllHostsInCluster(clu.getId());
+            if (clusterHosts == null || clusterHosts.size() == 0) {
+                clu.setGuid(null);
+                _clusterDao.update(clu.getId(), clu);
+                _clusterDao.update(cluster.getId(), cluster);
+                return;
+            }
+            throw e;
+        }
+    }
+
     @Override
     public Map<? extends ServerResource, Map<String, String>> find(long dcId, Long podId, Long clusterId, URI url, String username, String password, List<String> hostTags) throws DiscoveryException {
         Map<CitrixResourceBase, Map<String, String>> resources = new HashMap<CitrixResourceBase, Map<String, String>>();
@@ -180,7 +197,7 @@ public class XcpServerDiscoverer extends DiscovererBase implements Discoverer, L
             /*set cluster hypervisor type to xenserver*/
             ClusterVO clu = _clusterDao.findById(clusterId);
             if ( clu.getGuid()== null ) {
-            	clu.setGuid(poolUuid);
+                setClusterGuid(clu, poolUuid);
             } else {
                 List<HostVO> clusterHosts = _resourceMgr.listAllHostsInCluster(clusterId);
                 if( clusterHosts != null && clusterHosts.size() > 0) {
@@ -198,7 +215,7 @@ public class XcpServerDiscoverer extends DiscovererBase implements Discoverer, L
                         }
                     }
                 } else {
-                    clu.setGuid(poolUuid);
+                    setClusterGuid(clu, poolUuid);
                 }
             }
             // can not use this conn after this point, because this host may join a pool, this conn is retired
@@ -271,31 +288,21 @@ public class XcpServerDiscoverer extends DiscovererBase implements Discoverer, L
                 details.put(HostInfo.HOST_OS_VERSION, hostOSVer);
                 details.put(HostInfo.HOST_OS_KERNEL_VERSION, hostKernelVer);
                 details.put(HostInfo.HYPERVISOR_VERSION, xenVersion);
+                
+                String privateNetworkLabel = _networkMgr.getDefaultManagementTrafficLabel(dcId, HypervisorType.XenServer);
+                String storageNetworkLabel = _networkMgr.getDefaultStorageTrafficLabel(dcId, HypervisorType.XenServer);
+                
+                if (!params.containsKey("private.network.device") && privateNetworkLabel != null) {
+                    params.put("private.network.device", privateNetworkLabel);
+                    details.put("private.network.device", privateNetworkLabel);
+                }
+                
+                if (!params.containsKey("storage.network.device1") && storageNetworkLabel != null) {
+                    params.put("storage.network.device1", storageNetworkLabel);
+                    details.put("storage.network.device1", storageNetworkLabel);
+                }
 
-                /*if (!params.containsKey("public.network.device") && _publicNic != null) {
-                    params.put("public.network.device", _publicNic);
-                    details.put("public.network.device", _publicNic);
-                }
                 
-                if (!params.containsKey("guest.network.device") && _guestNic != null) {
-                    params.put("guest.network.device", _guestNic);
-                    details.put("guest.network.device", _guestNic);
-                }
-                
-                if (!params.containsKey("private.network.device") && _privateNic != null) {
-                    params.put("private.network.device", _privateNic);
-                    details.put("private.network.device", _privateNic);
-                }
-                
-                if (!params.containsKey("storage.network.device1") && _storageNic1 != null) {
-                    params.put("storage.network.device1", _storageNic1);
-                    details.put("storage.network.device1", _storageNic1);
-                }
-                
-                if (!params.containsKey("storage.network.device2") && _storageNic2 != null) {
-                    params.put("storage.network.device2", _storageNic2);
-                    details.put("storage.network.device2", _storageNic2);
-                }*/                             
                 params.put("wait", Integer.toString(_wait));
                 details.put("wait", Integer.toString(_wait));
                 params.put("migratewait", _configDao.getValue(Config.MigrateWait.toString()));
