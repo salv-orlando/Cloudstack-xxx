@@ -13,7 +13,15 @@
     ).filter(':not(.disabled)');
     var $publicTrafficItems = $wizard.find(
       '.steps .setup-public-traffic .data-body .data-item');
+    var $storageTrafficItems = $wizard.find(
+      '.steps .setup-storage-traffic .data-body .data-item');
     var groupedForms = {};
+
+    if ($physicalNetworkItems.find('li.traffic-type-draggable.storage').size()) {
+      $wizard.find('li.conditional.storage-traffic').show();
+    } else {
+      $wizard.find('li.conditional.storage-traffic').hide();
+    }
 
     if (options.all) {
       return cloudStack.serializeForm($forms, { escapeSlashes: true });
@@ -60,7 +68,7 @@
       $publicTrafficItems,
       function(publicTrafficItem) {
         var $publicTrafficItem = $(publicTrafficItem);
-        publicTrafficData = {};
+        var publicTrafficData = {};
         var fields = [
           'gateway',
           'netmask',
@@ -75,6 +83,29 @@
         });
 
         return publicTrafficData;
+      }
+    );
+
+    // Get storage traffic data (multi-edit)
+    groupedForms.storageTraffic = $.map(
+      $storageTrafficItems,
+      function(storageTrafficItem) {
+        var $storageTrafficItem = $(storageTrafficItem);
+        var storageTrafficData = {};
+        var fields = [
+				  'gateway',
+          'netmask',
+          'vlanid',
+          'startip',
+          'endip'
+        ];
+
+        $(fields).each(function() {
+          storageTrafficData[this] =
+            $storageTrafficItem.find('td.' + this + ' span').html();
+        });
+
+        return storageTrafficData;
       }
     );
 
@@ -105,7 +136,7 @@
       }
 
       cloudStack.dialog.notice({
-        message: 'Please add at lease one traffic range.'
+        message: dictionary['message.please.add.at.lease.one.traffic.range']
       });
       return false;
     }
@@ -451,7 +482,7 @@
         });
 
         $physicalNetworkItem.find('li.traffic-type-draggable.clone').remove();
-        physicalNetwork.update($physicalNetworkItem.parent().find('.multi')); 
+        physicalNetwork.update($physicalNetworkItem.parent().find('.multi'));
       });
 
       $physicalNetworkItem.addClass('disabled'); // Since there are no traffic types yet
@@ -467,11 +498,11 @@
 
       if (!$item.siblings().size()) {
         cloudStack.dialog.notice({
-          message: 'You must have at least 1 physical network'
+          message: dictionary['message.you.must.have.at.least.one.physical.network']
         });
       } else if ($item.find('input[type=radio]:checked').size()) {
         cloudStack.dialog.notice({
-          message: 'Please select a different public and/or management network before removing'
+          message: dictionary['message.please.select.a.different.public.and.management.network.before.removing']
         });
       } else {
         // Put any traffic type symbols back in original container
@@ -648,13 +679,16 @@
               $('<span>').addClass('icon').html('&nbsp;'),
               $('<span>').addClass('text').html(message)
             );
+          var $launchContainer = $launchStep.find('.launch-container');
 
           $launchStep.find('ul').append($li);
           $li.prev().removeClass('loading');
+          $launchContainer.scrollTop($launchContainer.height());
 
           if (isError) {
             $li.prev().addClass('error');
           }
+          
         };
 
         args.action({
@@ -676,7 +710,7 @@
               };
 
               var enableZone = function() {
-                makeMessage('Enabling zone');
+                makeMessage(dictionary['message.enabling.zone']);
 
                 enableZoneAction({
                   formData: data,
@@ -688,14 +722,14 @@
                     },
 
                     error: function(message) {
-                      cloudStack.dialog.notice({ message: 'Could not enable zone:</br>' + message });
+                      cloudStack.dialog.notice({ message: dictionary['error.could.not.enable.zone'] + ':</br>' + message });
                     }
                   }
                 });
               };
 
               cloudStack.dialog.confirm({
-                message: 'Zone creation complete. Would you like to enable this zone?',
+                message: dictionary['message.zone.creation.complete.would.you.like.to.enable.this.zone'],
                 action: function() {
                   enableZone();
                 },
@@ -717,7 +751,7 @@
                 .removeClass('final')
                 .html('<span>Fix errors</span>')
                 .click(goNextOverride);
-              makeMessage('Something went wrong; please correct the following:<br/>' + message, true);
+              makeMessage(dictionary['error.something.went.wrong.please.correct.the.following'] + ':<br/>' + message, true);
               $wizard.data('startfn', start);
             },
             message: makeMessage
@@ -840,7 +874,7 @@
         if ($targetStep.index() == $steps.size() - 1 || options.nextStep) {
           $nextButton.find('span').html(options.nextStep ? 'Save changes' : 'Launch zone');
           $nextButton.addClass('final');
-          
+
           if (options.nextStep) { $nextButton.addClass('post-launch'); }
         }
 
@@ -1015,7 +1049,7 @@
           } else if (!ui.draggable.closest('.traffic-types-drag-area').size()) {
             ui.draggable.remove();
           }
-          
+
           return true;
         }
       });

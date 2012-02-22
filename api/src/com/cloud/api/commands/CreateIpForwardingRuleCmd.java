@@ -32,6 +32,7 @@ import com.cloud.api.Parameter;
 import com.cloud.api.ServerApiException;
 import com.cloud.api.response.FirewallRuleResponse;
 import com.cloud.api.response.IpForwardingRuleResponse;
+import com.cloud.async.AsyncJob;
 import com.cloud.event.EventTypes;
 import com.cloud.exception.InvalidParameterValueException;
 import com.cloud.exception.NetworkRuleConflictException;
@@ -123,7 +124,7 @@ public class CreateIpForwardingRuleCmd extends BaseAsyncCreateCmd implements Sta
             
             result = result && _rulesService.applyStaticNatRules(ipAddressId, UserContext.current().getCaller());
             rule = _entityMgr.findById(FirewallRule.class, getEntityId());
-            StaticNatRule staticNatRule = _rulesService.buildStaticNatRule(rule);
+            StaticNatRule staticNatRule = _rulesService.buildStaticNatRule(rule, false);
             IpForwardingRuleResponse fwResponse = _responseGenerator.createIpForwardingRuleResponse(staticNatRule);
             fwResponse.setResponseName(getCommandName());
             this.setResponseObject(fwResponse);
@@ -298,5 +299,10 @@ public class CreateIpForwardingRuleCmd extends BaseAsyncCreateCmd implements Sta
 	public FirewallRuleType getType() {
 		return FirewallRuleType.User;
 	}
+	
+	@Override
+    public AsyncJob.Type getInstanceType() {
+        return AsyncJob.Type.FirewallRule;
+    }
 
 }

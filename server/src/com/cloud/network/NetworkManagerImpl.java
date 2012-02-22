@@ -354,12 +354,12 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
     }
 
     @Override
-    public PublicIp assignPublicIpAddress(long dcId, Long podId, Account owner, VlanType type, Long networkId, String requestedIp, boolean isElastic) throws InsufficientAddressCapacityException {
-        return fetchNewPublicIp(dcId, podId, null, owner, type, networkId, false, true, requestedIp, isElastic);
+    public PublicIp assignPublicIpAddress(long dcId, Long podId, Account owner, VlanType type, Long networkId, String requestedIp, boolean isSystem) throws InsufficientAddressCapacityException {
+        return fetchNewPublicIp(dcId, podId, null, owner, type, networkId, false, true, requestedIp, isSystem);
     }
 
     @DB
-    public PublicIp fetchNewPublicIp(long dcId, Long podId, Long vlanDbId, Account owner, VlanType vlanUse, Long networkId, boolean sourceNat, boolean assign, String requestedIp, boolean isElastic)
+    public PublicIp fetchNewPublicIp(long dcId, Long podId, Long vlanDbId, Account owner, VlanType vlanUse, Long networkId, boolean sourceNat, boolean assign, String requestedIp, boolean isSystem)
             throws InsufficientAddressCapacityException {
         StringBuilder errorMessage = new StringBuilder("Unable to get ip adress in ");
         Transaction txn = Transaction.currentTxn();
@@ -414,7 +414,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         addr.setAllocatedTime(new Date());
         addr.setAllocatedInDomainId(owner.getDomainId());
         addr.setAllocatedToAccountId(owner.getId());
-        addr.setElastic(isElastic);
+        addr.setSystem(isSystem);
 
         if (assign) {
             markPublicIpAsAllocated(addr);
@@ -459,7 +459,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
             String guestType = vlan.getVlanType().toString();
             
-            UsageEventVO usageEvent = new UsageEventVO(EventTypes.EVENT_NET_IP_ASSIGN, owner.getId(), addr.getDataCenterId(), addr.getId(), addr.getAddress().toString(), addr.isSourceNat(), guestType, addr.getElastic());
+            UsageEventVO usageEvent = new UsageEventVO(EventTypes.EVENT_NET_IP_ASSIGN, owner.getId(), addr.getDataCenterId(), addr.getId(), addr.getAddress().toString(), addr.isSourceNat(), guestType, addr.getSystem());
             _usageEventDao.persist(usageEvent);
             // don't increment resource count for direct ip addresses
             if (addr.getAssociatedWithNetworkId() != null) {
@@ -946,7 +946,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
     @Override
     @DB
     @ActionEvent(eventType = EventTypes.EVENT_NET_IP_ASSIGN, eventDescription = "allocating Ip", create = true)
-    public IpAddress allocateIP(long networkId, Account ipOwner, boolean isElastic) throws ResourceAllocationException, InsufficientAddressCapacityException, ConcurrentOperationException {
+    public IpAddress allocateIP(long networkId, Account ipOwner, boolean isSystem) throws ResourceAllocationException, InsufficientAddressCapacityException, ConcurrentOperationException {
         Account caller = UserContext.current().getCaller();
         long userId = UserContext.current().getCallerUserId();
 
@@ -1025,7 +1025,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
                 }
             }
 
-            ip = fetchNewPublicIp(zone.getId(), null, null, ipOwner, vlanType, network.getId(), isSourceNat, assign, null, isElastic);
+            ip = fetchNewPublicIp(zone.getId(), null, null, ipOwner, vlanType, network.getId(), isSourceNat, assign, null, isSystem);
 
             if (ip == null) {
                 throw new InsufficientAddressCapacityException("Unable to find available public IP addresses", DataCenter.class, zone.getId());
@@ -1738,7 +1738,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             DeployDestination dest, ReservationContext context) throws InsufficientCapacityException,
             ConcurrentOperationException, ResourceUnavailableException {
         element.prepare(network, profile, vmProfile, dest, context);
-        if (vmProfile.getType() == Type.User && element.getProvider() != null) {
+        if (vmProfile.getType() == Type.User && vmProfile.getHypervisorType() != HypervisorType.BareMetal && element.getProvider() != null) {
             if (areServicesSupportedInNetwork(network.getId(), Service.Dhcp) &&
                     isProviderSupportServiceInNetwork(network.getId(), Service.Dhcp, element.getProvider()) &&
                     (element instanceof DhcpServiceProvider)) {
@@ -1953,9 +1953,9 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             throw new InvalidParameterValueException("Ip address id=" + ipAddressId + " belongs to Account wide IP pool and cannot be disassociated");
         }
 
-        // don't allow releasing elastic ip address
-        if (ipVO.getElastic()) {
-            throw new InvalidParameterValueException("Can't release elastic IP address " + ipVO);
+        // don't allow releasing system ip address
+        if (ipVO.getSystem()) {
+            throw new InvalidParameterValueException("Can't release system IP address " + ipVO);
         }
 
         boolean success = releasePublicIpAddress(ipAddressId, userId, caller);
@@ -1964,7 +1964,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             NetworkOffering offering = _configMgr.getNetworkOffering(guestNetwork.getNetworkOfferingId());
             Long vmId = ipVO.getAssociatedWithVmId();
             if (offering.getElasticIp() && vmId != null) {
-                _rulesMgr.enableElasticIpAndStaticNatForVm(_userVmDao.findById(vmId), true);
+                _rulesMgr.getSystemIpAndEnableStaticNatForVm(_userVmDao.findById(vmId), true);
                 return true;
             }
             return true;
@@ -2807,18 +2807,19 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
     @Override
     @DB
-    public void shutdownNetwork(long networkId, ReservationContext context, boolean cleanupElements) {
-
+    public boolean shutdownNetwork(long networkId, ReservationContext context, boolean cleanupElements) {
+        boolean result = false;
+        
         Transaction txn = Transaction.currentTxn();
         txn.start();
         NetworkVO network = _networksDao.lockRow(networkId, true);
         if (network == null) {
             s_logger.debug("Unable to find network with id: " + networkId);
-            return;
+            return false;
         }
         if (network.getState() != Network.State.Implemented && network.getState() != Network.State.Shutdown) {
             s_logger.debug("Network is not implemented: " + network);
-            return;
+            return false;
         }
 
         network.setState(Network.State.Shutdown);
@@ -2842,12 +2843,14 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             network.setRestartRequired(false);
             _networksDao.update(network.getId(), network);
             _networksDao.clearCheckForGc(networkId);
-
+            result = true;
         } else {
             network.setState(Network.State.Implemented);
             _networksDao.update(network.getId(), network);
+            result = false;
         }
         txn.commit();
+        return result;
     }
 
     private boolean shutdownNetworkElementsAndResources(ReservationContext context, boolean cleanupElements, NetworkVO network) {
@@ -3566,7 +3569,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
                 addr.setAllocatedTime(new Date());
                 addr.setAllocatedInDomainId(owner.getDomainId());
                 addr.setAllocatedToAccountId(owner.getId());
-                addr.setElastic(false);
+                addr.setSystem(false);
                 addr.setState(IpAddress.State.Allocating);
                 markPublicIpAsAllocated(addr);
             }
@@ -3795,7 +3798,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
                 String guestType = vlan.getVlanType().toString();
 
-                UsageEventVO usageEvent = new UsageEventVO(EventTypes.EVENT_NET_IP_RELEASE, ip.getAllocatedToAccountId(), ip.getDataCenterId(), addrId, ip.getAddress().addr(), ip.isSourceNat(), guestType, ip.getElastic());
+                UsageEventVO usageEvent = new UsageEventVO(EventTypes.EVENT_NET_IP_RELEASE, ip.getAllocatedToAccountId(), ip.getDataCenterId(), addrId, ip.getAddress().addr(), ip.isSourceNat(), guestType, ip.getSystem());
                 _usageEventDao.persist(usageEvent);
             }
 
@@ -3849,6 +3852,12 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         }
     }
 
+    private boolean checkForNonStoppedVmInNetwork(long networkId) {
+        List<UserVmVO> vms = _userVmDao.listByNetworkIdAndStates(networkId, VirtualMachine.State.Starting, 
+                VirtualMachine.State.Running, VirtualMachine.State.Migrating, VirtualMachine.State.Stopping);
+        return vms.isEmpty();
+    }
+    
     @Override
     @DB
     @ActionEvent(eventType = EventTypes.EVENT_NETWORK_UPDATE, eventDescription = "updating network", async = true)
@@ -3912,6 +3921,11 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
                         && !changeCidr) {
                     throw new InvalidParameterValueException("Can't guarantee guest network CIDR is unchanged after updating network!");
                 }
+                if (changeCidr) {
+                    if (!checkForNonStoppedVmInNetwork(network.getId())) {
+                        throw new InvalidParameterValueException("All user vm of network: " + network + " should be stopped before changing CIDR!");
+                    }
+                }
                 // check if the network is upgradable
                 if (!canUpgrade(network, oldNetworkOfferingId, networkOfferingId)) {
                     throw new InvalidParameterValueException("Can't upgrade from network offering " + oldNetworkOfferingId + " to " + networkOfferingId + "; check logs for more information");
@@ -3956,11 +3970,21 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         boolean validStateToShutdown = (network.getState() == Network.State.Implemented || network.getState() == Network.State.Setup || network.getState() == Network.State.Allocated);
         if (restartNetwork) {
             if (validStateToShutdown) {
-                s_logger.debug("Shutting down elements and resources for network id=" + networkId + " as a part of network update");
+                if (!changeCidr) {
+                    s_logger.debug("Shutting down elements and resources for network id=" + networkId + " as a part of network update");
 
-                if (!shutdownNetworkElementsAndResources(context, true, network)) {
-                    s_logger.warn("Failed to shutdown the network elements and resources as a part of network restart: " + network);
-                    throw new CloudRuntimeException("Failed to shutdown the network elements and resources as a part of network update: " + network);
+                    if (!shutdownNetworkElementsAndResources(context, true, network)) {
+                        s_logger.warn("Failed to shutdown the network elements and resources as a part of network restart: " + network);
+                        throw new CloudRuntimeException("Failed to shutdown the network elements and resources as a part of network update: " + network);
+                    }
+                } else {
+                    // We need to shutdown the network, since we want to re-implement the network.
+                    s_logger.debug("Shutting down network id=" + networkId + " as a part of network update");
+
+                    if (!shutdownNetwork(network.getId(), context, true)) {
+                        s_logger.warn("Failed to shutdown the network as a part of network update: " + network);
+                        throw new CloudRuntimeException("Failed to shutdown the network as a part of network update: " + network);
+                    }
                 }
             } else {
                 throw new CloudRuntimeException("Failed to shutdown the network elements and resources as a part of network update: " + network + "; network is in wrong state: " + network.getState());
@@ -4013,7 +4037,11 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
                 DeployDestination dest = new DeployDestination(_dcDao.findById(network.getDataCenterId()), null, null, null);
                 s_logger.debug("Implementing the network " + network + " elements and resources as a part of network update");
                 try {
-                    implementNetworkElementsAndResources(dest, context, network, _networkOfferingDao.findById(network.getNetworkOfferingId()));
+                    if (!changeCidr) {
+                        implementNetworkElementsAndResources(dest, context, network, _networkOfferingDao.findById(network.getNetworkOfferingId()));
+                    } else {
+                        implementNetwork(network.getId(), dest, context);
+                    }
                 } catch (Exception ex) {
                     s_logger.warn("Failed to implement network " + network + " elements and resources as a part of network update due to ", ex);
                     throw new CloudRuntimeException("Failed to implement network " + network + " elements and resources as a part of network update");
@@ -4611,7 +4639,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
                 int existingEndVnet = Integer.parseInt(existingRange[1]);
 
                 // check if vnet is being extended
-                if (!(newStartVnet.intValue() > existingStartVnet && newEndVnet.intValue() < existingEndVnet)) {
+                if (newStartVnet.intValue() > existingStartVnet || newEndVnet.intValue() < existingEndVnet) {
                     throw new InvalidParameterValueException("Can't shrink existing vnet range as it the range has vnets allocated. Only extending existing vnet is supported");
                 }
 
@@ -5068,8 +5096,14 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
     }
 
     @Override
-    public long findPhysicalNetworkId(long zoneId, String tag) {
-        List<PhysicalNetworkVO> pNtwks = _physicalNetworkDao.listByZone(zoneId);
+    public long findPhysicalNetworkId(long zoneId, String tag, TrafficType trafficType) {
+        List<PhysicalNetworkVO> pNtwks = new ArrayList<PhysicalNetworkVO>();
+        if (trafficType != null) {
+            pNtwks = _physicalNetworkDao.listByZoneAndTrafficType(zoneId, trafficType);
+        } else {
+            pNtwks = _physicalNetworkDao.listByZone(zoneId);
+        }
+        
         if (pNtwks.isEmpty()) {
             throw new InvalidParameterValueException("Unable to find physical network in zone id=" + zoneId);
         }
@@ -5330,7 +5364,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
 
         // physical network id can be null in Guest Network in Basic zone, so locate the physical network
         if (physicalNetworkId == null) {
-            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), null);
+            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), null, null);
         }
 
         return isServiceEnabledInNetwork(physicalNetworkId, network.getId(), Service.SecurityGroup);
@@ -5754,7 +5788,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
             physicalNetworkId = getNonGuestNetworkPhysicalNetworkId(network);
         } else {
             NetworkOffering offering = _configMgr.getNetworkOffering(network.getNetworkOfferingId());
-            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), offering.getTags());
+            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), offering.getTags(), offering.getTrafficType());
         }
 
         if (physicalNetworkId == null) {
@@ -5896,7 +5930,7 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         Long physicalNetworkId = network.getPhysicalNetworkId();
         NetworkOffering offering = _configMgr.getNetworkOffering(network.getNetworkOfferingId());
         if (physicalNetworkId == null) {
-            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), offering.getTags());
+            physicalNetworkId = findPhysicalNetworkId(network.getDataCenterId(), offering.getTags(), offering.getTrafficType());
         }
         return physicalNetworkId;
     }
@@ -6006,13 +6040,13 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
     }
 
     @Override
-    public boolean areServicesEnabledInZone(long zoneId, long networkOfferingId, String tags, List<Service> services) {
-        long physicalNtwkId = findPhysicalNetworkId(zoneId, tags);
+    public boolean areServicesEnabledInZone(long zoneId, NetworkOffering offering, List<Service> services) {
+        long physicalNtwkId = findPhysicalNetworkId(zoneId, offering.getTags(), offering.getTrafficType());
         boolean result = true;
         List<String> checkedProvider = new ArrayList<String>();
         for (Service service : services) {
             // get all the providers, and check if each provider is enabled
-            List<String> providerNames = _ntwkOfferingSrvcDao.listProvidersForServiceForNetworkOffering(networkOfferingId, service);
+            List<String> providerNames = _ntwkOfferingSrvcDao.listProvidersForServiceForNetworkOffering(offering.getId(), service);
             for (String providerName : providerNames) {
                 if (!checkedProvider.contains(providerName)) {
                     result = result && isProviderEnabledInPhysicalNetwork(physicalNtwkId, providerName);
@@ -6096,28 +6130,28 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
         }
     }
 
-    public IpAddress assignElasticIp(long networkId, Account owner, boolean forElasticLb, boolean forElasticIp) throws InsufficientAddressCapacityException {
+    public IpAddress assignSystemIp(long networkId, Account owner, boolean forElasticLb, boolean forElasticIp) throws InsufficientAddressCapacityException {
         Network guestNetwork = getNetwork(networkId);
         NetworkOffering off = _configMgr.getNetworkOffering(guestNetwork.getNetworkOfferingId());
         IpAddress ip = null;
         if ((off.getElasticLb() && forElasticLb) || (off.getElasticIp() && forElasticIp)) {
 
             try {
-                s_logger.debug("Allocating elastic IP address for load balancer rule...");
+                s_logger.debug("Allocating system IP address for load balancer rule...");
                 // allocate ip
                 ip = allocateIP(networkId, owner, true);
                 // apply ip associations
                 ip = associateIP(ip.getId());
             } catch (ResourceAllocationException ex) {
-                throw new CloudRuntimeException("Failed to allocate elastic ip due to ", ex);
+                throw new CloudRuntimeException("Failed to allocate system ip due to ", ex);
             } catch (ConcurrentOperationException ex) {
-                throw new CloudRuntimeException("Failed to allocate elastic lb ip due to ", ex);
+                throw new CloudRuntimeException("Failed to allocate system lb ip due to ", ex);
             } catch (ResourceUnavailableException ex) {
-                throw new CloudRuntimeException("Failed to allocate elastic lb ip due to ", ex);
+                throw new CloudRuntimeException("Failed to allocate system lb ip due to ", ex);
             }
 
             if (ip == null) {
-                throw new CloudRuntimeException("Failed to allocate elastic ip");
+                throw new CloudRuntimeException("Failed to allocate system ip");
             }
         }
 
@@ -6125,17 +6159,17 @@ public class NetworkManagerImpl implements NetworkManager, NetworkService, Manag
     }
 
     @Override
-    public boolean handleElasticIpRelease(IpAddress ip) {
+    public boolean handleSystemIpRelease(IpAddress ip) {
         boolean success = true;
         Long networkId = ip.getAssociatedWithNetworkId();
         if (networkId != null) {
-            if (ip.getElastic()) {
+            if (ip.getSystem()) {
                 UserContext ctx = UserContext.current();
                 if (!releasePublicIpAddress(ip.getId(), ctx.getCallerUserId(), ctx.getCaller())) {
-                    s_logger.warn("Unable to release elastic ip address id=" + ip.getId());
+                    s_logger.warn("Unable to release system ip address id=" + ip.getId());
                     success = false;
                 } else {
-                    s_logger.warn("Successfully released elastic ip address id=" + ip.getId());
+                    s_logger.warn("Successfully released system ip address id=" + ip.getId());
                 }
             }
         }

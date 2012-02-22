@@ -21,11 +21,10 @@
             else
               return false;
           },
-          label: 'ui.listView.filters.destroyed'
+          label: 'state.Destroyed'
         }
       },
-      fields: {
-        name: { label: 'label.name', editable: true },
+      fields: {        
         displayname: { label: 'label.display.name' },
         zonename: { label: 'label.zone.name' },
         state: {
@@ -57,7 +56,7 @@
                   $.ajax({
                     url: createURL("listZones&available=true"),
                     dataType: "json",
-                    async: true,
+                    async: false,
                     success: function(json) {
                       zoneObjs = json.listzonesresponse.zone;
                       args.response.success({ data: {zones: zoneObjs}});
@@ -560,7 +559,7 @@
               return 'message.action.start.instance';
             },
             notification: function(args) {
-              return 'message.notification.start.instance';
+              return 'label.action.start.instance';
             }
           },
           notification: {
@@ -611,7 +610,7 @@
             },
 
             notification: function(args) {
-              return 'message.notification.stop.instance';
+              return 'label.action.stop.instance';
             }
           },
           notification: {
@@ -647,7 +646,7 @@
               return 'message.action.reboot.instance';
             },
             notification: function(args) {
-              return 'message.notification.reboot.instance';
+              return 'instances.actions.reboot.label';
             }
           },
           notification: {
@@ -998,8 +997,10 @@
           edit: {
             label: 'Edit',
             action: function(args) {
-              var array1 = [];
-              array1.push("&displayName=" + args.data.displayname);
+              var array1 = [];							
+							if(args.data.displayname != args.context.instances[0].name)
+                array1.push("&displayName=" + args.data.displayname);
+								
               array1.push("&group=" + args.data.group);
               array1.push("&ostypeid=" + args.data.guestosid);
               //array1.push("&haenable=" + haenable);
@@ -1016,10 +1017,10 @@
           },
 
           attachISO: {
-            label: 'label.attach.iso',
+            label: 'label.action.attach.iso',
             createForm: {
-              title: 'label.attach.iso',
-              desc: 'label.attach.iso',
+              title: 'label.action.attach.iso',
+              desc: 'label.action.attach.iso',
               fields: {
                 iso: {
                   label: 'ISO',
@@ -1077,13 +1078,13 @@
           },
 
           detachISO: {
-            label: 'label.detach.iso',
+            label: 'label.action.detach.iso',
             messages: {
               confirm: function(args) {
                 return 'message.detach.iso.confirm';
               },
               notification: function(args) {
-                return 'label.detach.iso';
+                return 'label.action.detach.iso';
               }
             },
             action: function(args) {
@@ -1182,7 +1183,7 @@
               desc: '',
               fields: {
                 serviceOffering: {
-                  label: 'label.service.offering',
+                  label: 'label.compute.offering',
                   select: function(args) {
                     $.ajax({
                       url: createURL("listServiceOfferings&VirtualMachineId=" + args.context.instances[0].id),
@@ -1230,32 +1231,24 @@
           },
 
           createTemplate: {
-            label: 'Create template',
+            label: 'label.create.template',
             messages: {
               confirm: function(args) {
-                /*
-                 if (getUserPublicTemplateEnabled() == "true" || isAdmin()) {
-                 $dialogCreateTemplate.find("#create_template_public_container").show();
-                 }
-                 */
-                return 'Are you sure you want to create template?';
-              },
-              success: function(args) {
-                return 'Template is being created.';
+                return 'message.create.template';
               },
               notification: function(args) {
-                return 'Creating template';
+                return 'label.create.template';
               }
             },
             createForm: {
-              title: 'Create Template',
-              desc: '',
+              title: 'label.create.template',
+              desc: 'label.create.template',
               preFilter: cloudStack.preFilter.createTemplate,
               fields: {
-                name: { label: 'Name', validation: { required: true }},
-                displayText: { label: 'Description', validation: { required: true }},
+                name: { label: 'label.name', validation: { required: true }},
+                displayText: { label: 'label.description', validation: { required: true }},
                 osTypeId: {
-                  label: 'OS Type',
+                  label: 'label.os.type',
                   select: function(args) {
                     $.ajax({
                       url: createURL("listOsTypes"),
@@ -1272,8 +1265,8 @@
                     });
                   }
                 },
-                isPublic: { label: 'Public', isBoolean: true },
-                url: { label: 'Image directory', validation: { required: true } }
+                isPublic: { label: 'label.public', isBoolean: true },
+                url: { label: 'image.directory', validation: { required: true } }
               }
             },
             action: function(args) {
@@ -1324,21 +1317,21 @@
           },
 
           migrate: {
-            label: 'Migrate instance to another host',
+            label: 'label.migrate.instance.to.host',
             messages: {
               confirm: function(args) {
-                return 'Please confirm that you want to migrate instance to another host.';
+                return 'message.migrate.instance.to.host';
               },
               notification: function(args) {
-                return 'Migrating instance to another host.';
+                return 'label.migrate.instance.to.host';
               }
             },
             createForm: {
-              title: 'Migrate instance',
+              title: 'label.migrate.instance.to.host',
               desc: '',
               fields: {
                 hostId: {
-                  label: 'Host',
+                  label: 'label.host',
                   validation: { required: true },
                   select: function(args) {
                     $.ajax({
@@ -1402,21 +1395,21 @@
           },
 
           migrateToAnotherStorage: {
-            label: 'Migrate instance to another primary storage',
+            label: 'label.migrate.instance.to.ps',
             messages: {
               confirm: function(args) {
-                return 'Please confirm that you want to migrate instance to another primary storage.';
+                return 'message.migrate.instance.to.ps';
               },
               notification: function(args) {
-                return 'Migrating instance to another primary storage.';
+                return 'label.migrate.instance.to.ps';
               }
             },
             createForm: {
-              title: 'Migrate instanceto another primary storage',
+              title: 'label.migrate.instance.to.ps',
               desc: '',
               fields: {
                 storageId: {
-                  label: 'Primary storage',
+                  label: 'label.primary.storage',
                   validation: { required: true },
                   select: function(args) {
                     $.ajax({
@@ -1464,14 +1457,14 @@
           },
 
           viewConsole: {
-            label: 'View console',
+            label: 'label.view.console',  
             action: {
               externalLink: {
                 url: function(args) {
                   return clientConsoleUrl + '?cmd=access&vm=' + args.context.instances[0].id;
                 },
-                title: function(args) {
-                  return "console" + args.context.instances[0].id;  //can't have space in window name in window.open()
+                title: function(args) {						
+                  return args.context.instances[0].id.substr(0,8);  //title in window.open() can't have space nor longer than 8 characters. Otherwise, IE browser will have error.
                 },
                 width: 820,
                 height: 640
@@ -1492,17 +1485,20 @@
               else {
                 hiddenFields = ["hypervisor"];
               }
+
+              if (!args.context.instances[0].publicip) {
+                hiddenFields.push('publicip');
+              }
+              
               return hiddenFields;
             },
 
             fields: [
-              {
-                name: { label: 'label.name', isEditable: false }
-              },
-              {
+              {                       
                 id: { label: 'label.id', isEditable: false },
-                displayname: { label: 'label.display.name', isEditable: true },
+                displayname: { label: 'label.display.name', isEditable: true },								   
                 state: { label: 'label.state', isEditable: false },
+                publicip: { label: 'label.public.ip', isEditable: false },
                 zonename: { label: 'label.zone.name', isEditable: false },
                 hypervisor: { label: 'label.hypervisor', isEditable: false },
                 templatename: { label: 'label.template', isEditable: false },
@@ -1526,7 +1522,7 @@
                   }
                 },
 
-                serviceofferingname: { label: 'label.service.offering', isEditable: false },
+                serviceofferingname: { label: 'label.compute.offering', isEditable: false },
                 group: { label: 'label.group', isEditable: true },
                 hostname: { label: 'label.host', isEditable: false},
                 haenable: { label: 'label.ha.enabled', isEditable: false, converter:cloudStack.converters.toBooleanText },
@@ -1539,7 +1535,8 @@
                 },
                 domain: { label: 'label.domain', isEditable: false },
                 account: { label: 'label.account', isEditable: false },
-                created: { label: 'label.created', isEditable: false, converter: cloudStack.converters.toLocalDate }
+                created: { label: 'label.created', isEditable: false, converter: cloudStack.converters.toLocalDate },
+								name: { label: 'label.name', isEditable: false }
               }
             ],
 
@@ -1569,7 +1566,7 @@
                 isdefault: {
                   label: 'label.is.default',
                   converter: function(data) {
-                    return data ? 'label.yes' : 'label.no';
+                    return data ? _l('label.yes') : _l('label.no');
                   }
                 }
               }
@@ -1579,7 +1576,7 @@
                 var name = 'NIC ' + (index + 1);
 
                 if (nic.isdefault) {
-                  name += ' (Default)';
+                  name += ' (' + _l('label.default') + ')';
                 }
                 return $.extend(nic, {
                   name: name
@@ -1592,13 +1589,13 @@
            * Security Groups tab
            */
           securityGroups: {
-            title: 'Security groups',
+            title: 'label.menu.security.groups',
             multiple: true,
             fields: [
               {
                 id: { label: 'ID' },
-                name: { label: 'Name' },
-                description: { label: 'Description' }
+                name: { label: 'label.name' },
+                description: { label: 'label.description' }
               }
             ],
             dataProvider: function(args) {
@@ -1610,12 +1607,12 @@
            * Statistics tab
            */
           stats: {
-            title: 'Statistics',
+            title: 'label.statistics',
             fields: {
-              totalCPU: { label: 'Total CPU' },
-              cpuused: { label: 'CPU Utilized' },
-              networkkbsread: { label: 'Network Read' },
-              networkkbswrite: { label: 'Network Write' }
+              totalCPU: { label: 'label.total.cpu' },
+              cpuused: { label: 'label.cpu.utilized' },
+              networkkbsread: { label: 'label.network.read' },
+              networkkbswrite: { label: 'label.network.write' }
             },
             dataProvider: function(args) {
               var jsonObj = args.context.instances[0];

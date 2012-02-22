@@ -715,7 +715,7 @@ public class ApiResponseHelper implements ResponseGenerator {
         ipResponse.setZoneId(zoneId);
         ipResponse.setZoneName(ApiDBUtils.findZoneById(ipAddress.getDataCenterId()).getName());
         ipResponse.setSourceNat(ipAddress.isSourceNat());
-        ipResponse.setIsElastic(ipAddress.getElastic());
+        ipResponse.setIsSystem(ipAddress.getSystem());
 
         // get account information
         populateOwner(ipResponse, ipAddress);
@@ -727,7 +727,11 @@ public class ApiResponseHelper implements ResponseGenerator {
             UserVm vm = ApiDBUtils.findUserVmById(ipAddress.getAssociatedWithVmId());
             ipResponse.setVirtualMachineId(vm.getId());
             ipResponse.setVirtualMachineName(vm.getHostName());
-            ipResponse.setVirtualMachineDisplayName(vm.getDisplayName());
+            if (vm.getDisplayName() != null) {
+                ipResponse.setVirtualMachineDisplayName(vm.getDisplayName());
+            } else {
+                ipResponse.setVirtualMachineDisplayName(vm.getHostName());
+            }
         }
 
         ipResponse.setAssociatedNetworkId(ipAddress.getAssociatedWithNetworkId());
@@ -759,6 +763,15 @@ public class ApiResponseHelper implements ResponseGenerator {
             ipResponse.setVlanId(ipAddress.getVlanId());
             ipResponse.setVlanName(ApiDBUtils.findVlanById(ipAddress.getVlanId()).getVlanTag());
         }
+        
+        if (ipAddress.getSystem()) {
+            if (ipAddress.isOneToOneNat()) {
+                ipResponse.setPurpose(IpAddress.Purpose.StaticNat.toString());
+            } else {
+                ipResponse.setPurpose(IpAddress.Purpose.Lb.toString());
+            }
+        }
+        
         ipResponse.setObjectName("ipaddress");
         return ipResponse;
     }
@@ -963,7 +976,11 @@ public class ApiResponseHelper implements ResponseGenerator {
                 volResponse.setVirtualMachineName(vm.getHostName());
                 UserVm userVm = ApiDBUtils.findUserVmById(vm.getId());
                 if (userVm != null) {
-                    volResponse.setVirtualMachineDisplayName(userVm.getDisplayName());
+                    if (userVm.getDisplayName() != null) {
+                        volResponse.setVirtualMachineDisplayName(userVm.getDisplayName());
+                    } else {
+                        volResponse.setVirtualMachineDisplayName(userVm.getHostName());
+                    }
                     volResponse.setVirtualMachineState(vm.getState().toString());
                 } else {
                     s_logger.error("User Vm with Id: " + instanceId + " does not exist for volume " + volume.getId());
@@ -1166,7 +1183,12 @@ public class ApiResponseHelper implements ResponseGenerator {
             if (vm != null) {
                 response.setVirtualMachineId(vm.getId());
                 response.setVirtualMachineName(vm.getHostName());
-                response.setVirtualMachineDisplayName(vm.getDisplayName());
+                
+                if (vm.getDisplayName() != null) {
+                    response.setVirtualMachineDisplayName(vm.getDisplayName());
+                } else {
+                    response.setVirtualMachineDisplayName(vm.getHostName());
+                }
             }
         }
         FirewallRule.State state = fwRule.getState();
@@ -1194,7 +1216,11 @@ public class ApiResponseHelper implements ResponseGenerator {
             if (vm != null) {// vm might be destroyed
                 response.setVirtualMachineId(vm.getId());
                 response.setVirtualMachineName(vm.getHostName());
-                response.setVirtualMachineDisplayName(vm.getDisplayName());
+                if (vm.getDisplayName() != null) {
+                    response.setVirtualMachineDisplayName(vm.getDisplayName());
+                } else {
+                    response.setVirtualMachineDisplayName(vm.getHostName());
+                }
             }
         }
         FirewallRule.State state = fwRule.getState();
@@ -1239,6 +1265,8 @@ public class ApiResponseHelper implements ResponseGenerator {
 
             if (userVm.getDisplayName() != null) {
                 userVmResponse.setDisplayName(userVm.getDisplayName());
+            } else {
+                userVmResponse.setDisplayName(userVm.getHostName());
             }
 
             if (userVm.getPassword() != null) {
@@ -1439,6 +1467,12 @@ public class ApiResponseHelper implements ResponseGenerator {
                     nicResponses.add(nicResponse);
                 }
                 userVmResponse.setNics(nicResponses);
+            }
+            
+            IpAddress ip = ApiDBUtils.findIpByAssociatedVmId(userVm.getId());
+            if (ip != null) {
+                userVmResponse.setPublicIpId(ip.getId());
+                userVmResponse.setPublicIp(ip.getAddress().addr());
             }
 
             userVmResponse.setObjectName(objectName);
@@ -2867,6 +2901,8 @@ public class ApiResponseHelper implements ResponseGenerator {
         }
         if (userVm.getDisplayName() != null) {
             userVmData.setDisplayName(userVm.getDisplayName());
+        } else {
+            userVmData.setDisplayName(userVm.getHostName());
         }
         userVmData.setDomainId(userVm.getDomainId());
 
@@ -2889,6 +2925,7 @@ public class ApiResponseHelper implements ResponseGenerator {
         userVmResponse.setHypervisor(userVmData.getHypervisor());
         userVmResponse.setId(userVmData.getId());
         userVmResponse.setName(userVmData.getName());
+
         userVmResponse.setDisplayName(userVmData.getDisplayName());
 
         populateAccount(userVmResponse, userVmData.getAccountId());
@@ -2966,6 +3003,8 @@ public class ApiResponseHelper implements ResponseGenerator {
             nicResponses.add(nr);
         }
         userVmResponse.setNics(new ArrayList<NicResponse>(nicResponses));
+        userVmResponse.setPublicIpId(userVmData.getPublicIpId());
+        userVmResponse.setPublicIp(userVmData.getPublicIp());
 
         return userVmResponse;
     }
@@ -3287,6 +3326,7 @@ public class ApiResponseHelper implements ResponseGenerator {
         response.setZoneUuid(result.getZoneUuid());
         response.setNetworkUuid(result.getNetworkUuid());
         response.setNetmask(result.getNetmask());
+        response.setGateway(result.getGateway());
         response.setObjectName("storagenetworkiprange");
         return response;
     }

@@ -1188,7 +1188,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         DataCenterDeployment plan = new DataCenterDeployment(dcId);
         boolean isPodBased = (dest.getDataCenter().getNetworkType() == NetworkType.Basic || _networkMgr.areServicesSupportedInNetwork(guestNetwork.getId(), Service.SecurityGroup)) && guestNetwork.getTrafficType() == TrafficType.Guest;
         boolean publicNetwork = false;
-        if (_networkMgr.areServicesSupportedInNetwork(guestNetwork.getId(), Service.SourceNat)) {
+        if (_networkMgr.isProviderSupportServiceInNetwork(guestNetwork.getId(), Service.SourceNat, Provider.VirtualRouter)) {
             publicNetwork = true;
         }
         if (isRedundant && !publicNetwork) {
@@ -1197,11 +1197,17 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         }
         List<DomainRouterVO> routers;
         Long podId = null;
+        if (isPodBased) {
+            Pod pod = dest.getPod();
+            if (pod != null) {
+                podId = pod.getId();
+            }
+        }
+        
         if (publicNetwork) {
             routers = _routerDao.listByNetworkAndRole(guestNetwork.getId(), Role.VIRTUAL_ROUTER);
         } else {
-            if (isPodBased) {
-                podId = dest.getPod().getId();
+            if (isPodBased && podId != null) {
                 routers = _routerDao.listByNetworkAndPodAndRole(guestNetwork.getId(), podId, Role.VIRTUAL_ROUTER);
                 plan = new DataCenterDeployment(dcId, podId, null, null, null, null);
             } else {
@@ -1224,7 +1230,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             }
 
             /* If old network is redundant but new is single router, then routers.size() = 2 but routerCount = 1 */
-            if (routers.size() >= routerCount) {
+            if (routers.size() >= routerCount || (isPodBased && podId == null)) {
                 return routers;
             }
 
@@ -1876,7 +1882,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                 if (!staticNatFirewallRules.isEmpty()) {
                     List<StaticNatRule> staticNatRules = new ArrayList<StaticNatRule>();
                     for (FirewallRule rule : staticNatFirewallRules) {
-                        staticNatRules.add(_rulesMgr.buildStaticNatRule(rule));
+                        staticNatRules.add(_rulesMgr.buildStaticNatRule(rule, false));
                     }
                     createApplyStaticNatRulesCommands(staticNatRules, router, cmds);
                 }

@@ -41,6 +41,9 @@ import com.cloud.exception.ConcurrentOperationException;
 import com.cloud.exception.InvalidParameterValueException;
 import com.cloud.exception.PermissionDeniedException;
 import com.cloud.exception.ResourceUnavailableException;
+import com.cloud.projects.ProjectManager;
+import com.cloud.projects.ProjectVO;
+import com.cloud.projects.dao.ProjectDao;
 import com.cloud.service.ServiceOfferingVO;
 import com.cloud.service.dao.ServiceOfferingDao;
 import com.cloud.storage.DiskOfferingVO;
@@ -73,6 +76,10 @@ public class DomainManagerImpl implements DomainManager, DomainService, Manager 
     private DiskOfferingDao _diskOfferingDao;
     @Inject
     private ServiceOfferingDao _offeringsDao;
+    @Inject
+    private ProjectDao _projectDao;
+    @Inject
+    private ProjectManager _projectMgr;
 
     @Override
     public Domain getDomain(long domainId) {
@@ -221,6 +228,7 @@ public class DomainManagerImpl implements DomainManager, DomainService, Manager 
         s_logger.debug("Marking domain id=" + domain.getId() + " as " + Domain.State.Inactive + " before actually deleting it");
         domain.setState(Domain.State.Inactive);
         _domainDao.update(domain.getId(), domain);
+        boolean rollBackState = false;
 
         try {
             long ownerId = domain.getAccountId();
@@ -235,10 +243,12 @@ public class DomainManagerImpl implements DomainManager, DomainService, Manager 
                     if (!_domainDao.remove(domain.getId())) {
                         s_logger.error("Delete failed on domain " + domain.getName() + " (id: " + domain.getId()
                                 + "); please make sure all users and sub domains have been removed from the domain before deleting");
+                        rollBackState = true;
                         return false;
                     }
                 } else {
                     s_logger.warn("Can't delete the domain yet because it has " + accountsForCleanup.size() + "accounts that need a cleanup");
+                    rollBackState = true;
                     return false;
                 }
             }
@@ -248,6 +258,13 @@ public class DomainManagerImpl implements DomainManager, DomainService, Manager 
         } catch (Exception ex) {
             s_logger.error("Exception deleting domain with id " + domain.getId(), ex);
             return false;
+        } finally {
+            //when success is false
+            if (rollBackState) {
+                s_logger.debug("Changing domain id=" + domain.getId() + " state back to " + Domain.State.Active + " because it can't be removed due to resources referencing to it");
+                domain.setState(Domain.State.Active);
+                _domainDao.update(domain.getId(), domain);
+            }
         }
     }
 
@@ -265,6 +282,7 @@ public class DomainManagerImpl implements DomainManager, DomainService, Manager 
     }
 
     private boolean cleanupDomain(Long domainId, Long ownerId) throws ConcurrentOperationException, ResourceUnavailableException {
+        s_logger.debug("Cleaning up domain id=" + domainId);
         boolean success = true;
         {
             DomainVO domainHandle = _domainDao.findById(domainId);
@@ -299,9 +317,19 @@ public class DomainManagerImpl implements DomainManager, DomainService, Manager 
         sc.addAnd("domainId", SearchCriteria.Op.EQ, domainId);
         List<AccountVO> accounts = _accountDao.search(sc, null);
         for (AccountVO account : accounts) {
-            success = (success && _accountMgr.deleteAccount(account, UserContext.current().getCallerUserId(), UserContext.current().getCaller()));
-            if (!success) {
-                s_logger.warn("Failed to cleanup account id=" + account.getId() + " as a part of domain cleanup");
+            if (account.getType() != Account.ACCOUNT_TYPE_PROJECT) {
+                s_logger.debug("Deleting account " + account + " as a part of domain id=" + domainId + " cleanup");
+                success = (success && _accountMgr.deleteAccount(account, UserContext.current().getCallerUserId(), UserContext.current().getCaller()));
+                if (!success) {
+                    s_logger.warn("Failed to cleanup account id=" + account.getId() + " as a part of domain cleanup");
+                }
+            } else {
+                ProjectVO project = _projectDao.findByProjectAccountId(account.getId());
+                s_logger.debug("Deleting project " + project + " as a part of domain id=" + domainId + " cleanup");
+                success = (success && _projectMgr.deleteProject(UserContext.current().getCaller(), UserContext.current().getCallerUserId(), project));
+                if (!success) {
+                    s_logger.warn("Failed to cleanup project " + project + " as a part of domain cleanup");
+                }
             }
         }
 

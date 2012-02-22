@@ -65,28 +65,28 @@
                   var resourceMap = {
                     0: {
                       id: 'user_vm',
-                      label: 'Max. User VMs'
+                      label: 'label.max.vms'
                     },
                     1: {
                       id: 'public_ip',
-                      label: 'Max. Public IPs'
+                      label: 'label.max.public.ips'
                     },
                     2: {
                       id: 'volume',
-                      label: 'Max. Volumes'
+                      label: 'label.max.volumes'
                     },
                     3: {
                       id: 'snapshot',
-                      label: 'Max. Snapshots'
+                      label: 'label.max.snapshots'
                     },
                     4: {
                       id: 'template',
-                      label: 'Max. Templates'
+                      label: 'label.max.templates'
                     }
                   };
                   return {
                     id: resourceMap[resource.resourcetype].id,
-                    label: resourceMap[resource.resourcetype].label,
+                    label: _l(resourceMap[resource.resourcetype].label),
                     type: resource.resourcetype,
                     value: resource.max
                   };
@@ -281,13 +281,13 @@
       noHeaderActionsColumn: true,
       ignoreEmptyFields: true,
       fields: {
-        'email': { edit: true, label: 'E-mail' },
-        'account': { edit: true, label: 'Account' },
-        'state': { edit: 'ignore', label: 'Status' },
+        'email': { edit: true, label: 'label.email' },
+        'account': { edit: true, label: 'label.account' },
+        'state': { edit: 'ignore', label: 'label.status' },
         'add-user': { addButton: true, label: '' }
       },
       add: {
-        label: 'Invite',
+        label: 'label.invite',
         action: function(args) {
           $.ajax({
             url: createURL('addAccountToProject', { ignoreProject: true }),
@@ -542,7 +542,7 @@
     title: 'label.projects',
     id: 'projects',
     sectionSelect: {
-      label: 'Select view'
+      label: 'label.select-view'
     },
     sections: {
       projects: {
@@ -558,9 +558,9 @@
             state: {
               converter: function(str) {
                 // For localization
-                return str;
+                return 'state.' + str;
               },
-              label: 'Status', indicator: {
+              label: 'label.status', indicator: {
                 converter: function(str) {
                   return 'state.' + str;
                 },
@@ -583,6 +583,11 @@
             }
 
             var apiCmd = "listProjects&page=" + args.page + "&pagesize=" + pageSize + array1.join("") + '&listAll=true';
+
+            if (isDomainAdmin()) {
+                apiCmd += '&domainid=' + args.context.users[0].domainid;
+            }
+            
             $.ajax({
               url: createURL(apiCmd, { ignoreProject: true }),
               dataType: 'json',
@@ -733,19 +738,26 @@
               var project = args.context.projects[0];
               var projectOwner = project.account;
               var currentAccount = args.context.users[0].account;
+              var hiddenTabs = [];
 
-              if ((!isAdmin() && !isDomainAdmin()) &&
-                  (currentAccount != projectOwner)) return ['accounts', 'invitations', 'resources'];
+              if (!isAdmin() && !isDomainAdmin()) {
+                hiddenTabs.push('resources');
 
-              if (!cloudStack.projects.requireInvitation()) {
-                return ['invitations'];
+                if (currentAccount != projectOwner) {
+                  hiddenTabs.push('accounts');
+                  hiddenTabs.push('invitations');
+                }
               }
 
-              return [];
+              if (!cloudStack.projects.requireInvitation()) {
+                hiddenTabs.push('invitations');
+              }
+
+              return hiddenTabs;
             },
             tabs: {
               details: {
-                title: 'Details',
+                title: 'label.details',
                 fields: [
                   {
                     name: { label: 'label.name' }
@@ -760,8 +772,13 @@
                 dataProvider: function(args) {
                   var projectID = args.context.projects[0].id;
 
+                  var url = 'listProjects';
+                  
+                  if (isDomainAdmin()) {
+                    url += '&domainid=' + args.context.users[0].domainid;
+                  }                  
                   $.ajax({
-                    url: createURL('listProjects'),
+                    url: createURL(url),
                     data: {
                       listAll: true,
                       id: projectID
@@ -831,7 +848,7 @@
             project: { label: 'label.project' },
             domain: { label: 'label.domain' },
             state: {
-              label: 'Status',
+              label: 'label.status',
               converter: function(str) {
                 // For localization
                 return 'state.' + str;
@@ -915,7 +932,7 @@
             },
             
             accept: {
-              label: 'message.accept.project.invitation',
+              label: 'label.accept.project.invitation',
               action: function(args) {
                 $.ajax({
                   url: createURL('updateProjectInvitation'),
@@ -937,7 +954,7 @@
               },
               messages: {
                 confirm: function() { return 'message.confirm.join.project'; },
-                notification: function() { return 'message.accept.project.invitation'; }
+                notification: function() { return 'label.accept.project.invitation'; }
               },
               notification: { poll: pollAsyncJobResult }
             },

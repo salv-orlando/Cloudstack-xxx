@@ -8,18 +8,20 @@
     var $newRow;
     var jsonObj = $row.data('json-obj');
 
-    $listView.listView('replaceItem', {
-      $row: $row,
-      data: $.extend(jsonObj, newData),
-      after: function($newRow) {
-        $detailView.data('list-view-row', $newRow);
+		if($listView.length > 0 ) { //$listView.length is 0 after calling $(window).trigger('cloudStack.fullRefresh')
+			$listView.listView('replaceItem', {
+				$row: $row,
+				data: $.extend(jsonObj, newData),
+				after: function($newRow) {
+					$detailView.data('list-view-row', $newRow);
 
-        setTimeout(function() {
-          $('.data-table').dataTable('selectRow', $newRow.index());
-        }, 100);
-      }
-    });
-
+					setTimeout(function() {
+						$('.data-table').dataTable('selectRow', $newRow.index());
+					}, 100);
+				}
+			});
+    }
+		
     // Refresh detail view context
     $.extend(
       $detailView.data('view-args').context[
@@ -165,7 +167,12 @@
                   }
                 );
               },
-              error: function(args) {
+              error: function(args) {		//args here is parsed errortext from API response	
+							  if(args != null & args.length > 0) {
+									cloudStack.dialog.notice({
+										message: args
+									});			
+								}
                 $loading.remove();
               }
             }
@@ -257,7 +264,7 @@
       var $inputs = $detailView.find('input, select');
       var action = args.actions[args.actionName];
       var id = $detailView.data('view-args').id;
-      var $editButton = $('<div>').addClass('button done').html(_l('Apply')).hide()
+      var $editButton = $('<div>').addClass('button done').html(_l('label.apply')).hide()
             .appendTo(
               $detailView.find('.ui-tabs-panel .detail-group.actions')              
             ).fadeIn();
@@ -276,7 +283,7 @@
             var val = $input.is(':checked');
             
             $value.data('detail-view-boolean-value', val);
-            $value.html(val ? _l('Yes') : _l('No')); 
+            $value.html(val ? _l('label.yes') : _l('label.no')); 
           }
           else if ($input.is('select')) {
             $value.html(
@@ -316,7 +323,7 @@
               success: function(args) {
                 var notificationArgs = {
                   section: id,
-                  desc: 'Changed item properties',
+                  desc: _l('changed.item.properties'),
                   _custom: args ? args._custom : null
                 };
 
@@ -880,7 +887,7 @@
         $('<div>')
           .addClass('button refresh')
           .append(
-            $('<span>').html(_l('Refresh'))
+            $('<span>').html(_l('label.refresh'))
           )
       );
   };
