@@ -42,7 +42,7 @@ public interface NetworkService {
 
     List<? extends Network> getIsolatedNetworksOwnedByAccountInZone(long zoneId, Account owner);
 
-    IpAddress allocateIP(long networkId, Account ipOwner, boolean isElastic) throws ResourceAllocationException, InsufficientAddressCapacityException, ConcurrentOperationException;
+    IpAddress allocateIP(long networkId, Account ipOwner, boolean isSystem) throws ResourceAllocationException, InsufficientAddressCapacityException, ConcurrentOperationException;
 
     /**
      * Associates a public IP address for a router.
@@ -115,7 +115,7 @@ public interface NetworkService {
 
     PhysicalNetworkServiceProvider getCreatedPhysicalNetworkServiceProvider(Long providerId);
 
-    long findPhysicalNetworkId(long zoneId, String tag);
+    long findPhysicalNetworkId(long zoneId, String tag, TrafficType trafficType);
 
     PhysicalNetworkTrafficType addTrafficTypeToPhysicalNetwork(Long physicalNetworkId, String trafficType, String xenLabel, String kvmLabel, String vmwareLabel, String simulatorLabel, String vlan);
 

@@ -1,3 +1,4 @@
+
 (function(cloudStack, $) {
   var ipChangeNotice = function() {
     cloudStack.dialog.confirm({
@@ -32,7 +33,7 @@
           status == 'Creating' ||
           status == 'Allocating' ||
           item.account == 'system' ||
-          item.iselastic == true ) {
+          item.issystem == true ) {
         disallowedActions = allowedActions;
       }
 
@@ -42,10 +43,16 @@
         disallowedActions.push('disableStaticNAT');
       }
 
-      if (item.vpnenabled) {
-        disallowedActions.push('enableVPN');
+      if ($.inArray('Vpn', $.map(args.context.networks[0].service,
+                                 function(service) { return service.name; })) > -1) {
+        if (item.vpnenabled) {
+          disallowedActions.push('enableVPN');
+        } else {
+          disallowedActions.push('disableVPN');
+        }
       } else {
         disallowedActions.push('disableVPN');
+        disallowedActions.push('enableVPN');
       }
 
       if (item.issourcenat){
@@ -83,7 +90,7 @@
       preFilter: function(args) {
         var havingSecurityGroupNetwork = false;
         $.ajax({
-          url: createURL('listNetworks'),
+          url: createURL('listNetworks', { ignoreProject: true }),
           data: {
             supportedServices: 'SecurityGroup',
             listAll: true
@@ -166,8 +173,6 @@
                         }
                       });
                     }
-
-
                   },
                   networkOfferingId: {
                     label: 'label.network.offering',
@@ -433,11 +438,27 @@
                 createForm: {
                   title: 'label.restart.network',
                   desc: 'message.restart.network',
-                  fields: {
+                  preFilter: function(args) {									  
+										var zoneObj;
+										$.ajax({
+										  url: createURL("listZones&id=" + args.context.networks[0].zoneid),
+											dataType: "json",
+											async: false,
+											success: function(json){											  
+											  zoneObj = json.listzonesresponse.zone[0];												
+											}
+										});																				
+										if(zoneObj.networktype == "Basic")
+										  args.$form.find('.form-item[rel=cleanup]').hide();
+										else
+										  args.$form.find('.form-item[rel=cleanup]').css('display', 'inline-block');									
+									},
+									fields: {
                     cleanup: {
                       label: 'label.clean.up',
                       isBoolean: true,
-                      isChecked: false
+                      isChecked: false,
+											isHidden: true
                     }
                   }
                 },
@@ -447,7 +468,7 @@
                   }
                 },
                 action: function(args) {
-                  var array1 = [];
+                  var array1 = [];									
                   array1.push("&cleanup=" + (args.data.cleanup == "on"));
                   $.ajax({
                     url: createURL("restartNetwork&id=" + args.context.networks[0].id + array1.join("")),
@@ -558,6 +579,8 @@
                   if(zone.networktype == "Basic") {
                     hiddenFields.push("account");
                     hiddenFields.push("gateway");
+                    hiddenFields.push("vlan");
+                    hiddenFields.push("cidr");
                     //hiddenFields.push("netmask");
                   }
 
@@ -565,6 +588,7 @@
                     hiddenFields.push("networkofferingdisplaytext");
                     hiddenFields.push("networkdomaintext");
                     hiddenFields.push("gateway");
+                    hiddenFields.push("networkofferingname");
                     //hiddenFields.push("netmask");
                   }
                   else { //selectedGuestNetworkObj.type == "Shared"
@@ -603,6 +627,8 @@
                       }
                     },
                     vlan: { label: 'VLAN ID' },
+
+                    networkofferingname: { label: 'label.network.offering' },
 
                     networkofferingid: {
                       label: 'label.network.offering',
@@ -662,6 +688,13 @@
                     actionFilter: function(args) {
                       if (args.context.networks[0].state == 'Destroyed')
                         return [];
+
+                      if (args.context.networks[0].type == 'Shared' ||
+                          !$.grep(args.context.networks[0].service, function(service) {
+                            return service.name == 'SourceNat';
+                          }).length) {
+                        return ['edit', 'restart'];
+                      }
 
                       return args.context.actions;
                     },
@@ -787,7 +820,7 @@
                                       jobId: jobID
                                     },
                                     notification: {
-                                      label: 'Add load balancer rule',
+                                      label: 'label.add.load.balancer',
                                       poll: function(args) {
                                         var complete = args.complete;
                                         var error = args.error;
@@ -801,7 +834,7 @@
 
                                             lbCreationComplete = true;
                                             cloudStack.dialog.notice({
-                                              message: "The load balancer rule has been added under IP " +
+                                              message: _l('message.add.load.balancer.under.ip') +
                                                 args.data.loadbalancer.publicip
                                             });
 
@@ -870,9 +903,8 @@
               }
             },
             zonename: { label: 'label.zone' },
-            //vlanname: { label: 'VLAN' },
-            iselastic: { label: 'label.elastic', converter: cloudStack.converters.toBooleanText },
-            account: { label: 'label.account' },
+            //vlanname: { label: 'VLAN' },   					  
+						virtualmachinedisplayname: { label: 'label.vm.name' },						 
             state: {
               converter: function(str) {
                 // For localization
@@ -1022,11 +1054,10 @@
 
               var disabledTabs = [];
               var ipAddress = args.context.ipAddresses[0];
-              if (!ipAddress.issourcenat ||
-                  (ipAddress.issourcenat && !ipAddress.vpnenabled)) {
+              if (!ipAddress.vpnenabled) {
                 disabledTabs.push('vpn');
               }
-              if(ipAddress.iselastic == true) {
+              if(ipAddress.issystem == true) {
                 disabledTabs.push('vpn');
 
                 if(ipAddress.isstaticnat == true || ipAddress.virtualmachineid != null)
@@ -1294,7 +1325,26 @@
             },
             tabs: {
               details: {
-                title: 'Details',
+                title: 'label.details',
+								
+								preFilter: function(args) {
+								  var hiddenFields = [];								
+									var zoneObj;
+									$.ajax({
+									  url: createURL("listZones&id=" + args.context.ipAddresses[0].zoneid),
+										dataType: "json",
+										async: false,
+										success: function(json) {										  
+											zoneObj = json.listzonesresponse.zone[0];											
+										}
+									});							
+									if(zoneObj.networktype == "Advanced") {
+									  hiddenFields.push("issystem");
+										hiddenFields.push("purpose");
+									}																	
+									return hiddenFields;								
+								},
+								
                 fields: [
                   {
                     ipaddress: { label: 'IP' }
@@ -1308,7 +1358,8 @@
                     state: { label: 'label.state' },
                     issourcenat: { label: 'label.source.nat', converter: cloudStack.converters.toBooleanText },
                     isstaticnat: { label: 'label.static.nat', converter: cloudStack.converters.toBooleanText },
-                    iselastic: { label: 'label.elastic', converter: cloudStack.converters.toBooleanText },
+                    issystem: { label: 'label.is.system', converter: cloudStack.converters.toBooleanText }, //(basic zone only)
+										purpose: { label: 'label.purpose' }, //(basic zone only) When an IP is system-generated, the purpose it serves can be Lb or static nat.
                     virtualmachinedisplayname: { label: 'label.vm.name' },
                     domain: { label: 'label.domain' },
                     account: { label: 'label.account' },
@@ -1322,44 +1373,39 @@
 
                   // Get network data
                   $.ajax({
-                    url: createURL("listPublicIpAddresses&id="+args.id),
+                    url: createURL('listPublicIpAddresses'),
+                    data: {
+                      listAll: true,
+                      id: args.id
+                    },
                     dataType: "json",
                     async: true,
                     success: function(json) {
                       var item = items[0];
+                      // Get VPN data
                       $.ajax({
-                        url: createURL('listNetworks'),
+                        url: createURL('listRemoteAccessVpns'),
                         data: {
-                          networkid: this.associatednetworkid
+                          listAll: true,
+                          publicipid: item.id
                         },
                         dataType: 'json',
                         async: true,
-                        success: function(data) {
-                          // Get VPN data
-                          $.ajax({
-                            url: createURL('listRemoteAccessVpns'),
-                            data: {
-                              publicipid: item.id
-                            },
-                            dataType: 'json',
-                            async: true,
-                            success: function(vpnResponse) {
-                              var isVPNEnabled = vpnResponse.listremoteaccessvpnsresponse.count;
-                              if (isVPNEnabled) {
-                                item.vpnenabled = true;
-                                item.remoteaccessvpn = vpnResponse.listremoteaccessvpnsresponse.remoteaccessvpn[0];
-                              };
+                        success: function(vpnResponse) {
+                          var isVPNEnabled = vpnResponse.listremoteaccessvpnsresponse.count;
+                          if (isVPNEnabled) {
+                            item.vpnenabled = true;
+                            item.remoteaccessvpn = vpnResponse.listremoteaccessvpnsresponse.remoteaccessvpn[0];
+                          };
 
-                              // Check if data retrieval complete
-                              item.network = data.listnetworksresponse.network[0];
-                              item.networkname = item.network.name;
-                              item.networktype = item.network.type;
+                          // Check if data retrieval complete
+                          item.network = args.context.networks[0];
+                          item.networkname = item.network.name;
+                          item.networktype = item.network.type;
 
-                              args.response.success({
-                                actionFilter: actionFilters.ipAddress,
-                                data: item
-                              });
-                            }
+                          args.response.success({
+                            actionFilter: actionFilters.ipAddress,
+                            data: item
                           });
                         }
                       });
@@ -1434,11 +1480,18 @@
                             });
 
                             if ($(this).val() == 'icmp') {
+                              $icmpFields.show();
                               $icmpFields.attr('disabled', false);
                               $otherFields.attr('disabled', 'disabled');
+                              $otherFields.hide();
+                              $otherFields.parent().find('label.error').hide();
                             } else {
+                              $otherFields.show();
+                              $otherFields.parent().find('label.error').hide();
                               $otherFields.attr('disabled', false);
                               $icmpFields.attr('disabled', 'disabled');
+                              $icmpFields.hide();
+                              $icmpFields.parent().find('label.error').hide();
                             }
                           });
 
@@ -1664,6 +1717,7 @@
                         $.ajax({
                           url: createURL('listIpForwardingRules'),
                           data: {
+                            listAll: true,
                             ipaddressid: args.context.ipAddresses[0].id
                           },
                           dataType: 'json',
@@ -1724,17 +1778,18 @@
                     }),
                     multipleAdd: true,
                     fields: {
-                      'name': { edit: true, label: 'label.name' },
+                      'name': { edit: true, label: 'label.name', isEditable: true },
                       'publicport': { edit: true, label: 'label.public.port' },
                       'privateport': { edit: true, label: 'label.private.port' },
                       'algorithm': {
                         label: 'label.algorithm',
+                        isEditable: true,
                         select: function(args) {
                           args.response.success({
                             data: [
-                              { name: 'roundrobin', description: _l('label.round.robin') },
-                              { name: 'leastconn', description: _l('label.least.connections') },
-                              { name: 'source', description: _l('label.source') }
+                              { id: 'roundrobin', name: 'roundrobin', description: _l('label.round.robin') },
+                              { id: 'leastconn', name: 'leastconn', description: _l('label.least.connections') },
+                              { id: 'source', name: 'source', description: _l('label.source') }
                             ]
                           });
                         }
@@ -1801,7 +1856,7 @@
                                     jobId: jobID
                                   },
                                   notification: {
-                                    label: 'Add load balancer rule',
+                                    label: 'label.add.load.balancer',
                                     poll: function(args) {
                                       var complete = args.complete;
                                       var error = args.error;
@@ -1842,6 +1897,26 @@
                       }
                     },
                     actions: {
+                      edit: {
+                        label: 'label.edit',
+                        action: function(args) {
+                          $.ajax({
+                            url: createURL('updateLoadBalancerRule'),
+                            data: $.extend(args.data, {
+                              id: args.context.multiRule[0].id
+                            }),
+                            success: function(json) {
+                              args.response.success({
+                                _custom: { jobId: json.updateloadbalancerruleresponse.jobid },
+                                notification: {
+                                  label: 'label.edit.lb.rule',
+                                  poll: pollAsyncJobResult
+                                }
+                              });
+                            }
+                          });             
+                        }
+                      },
                       destroy:  {
                         label: 'label.action.delete.load.balancer',
                         action: function(args) {
@@ -1890,7 +1965,7 @@
                                   _custom: {
                                     jobId: json.assigntoloadbalancerruleresponse.jobid
                                   },
-                                  desc: 'Add VM(s) to load balancer rule',
+                                  desc: 'label.add.vms.to.lb',
                                   poll: pollAsyncJobResult
                                 }
                               });
@@ -2589,7 +2664,8 @@
                       success: function(data) {
                         args.response.success({
                           data: $.map(
-                            data.listsecuritygroupsresponse.securitygroup[0].ingressrule,
+                            data.listsecuritygroupsresponse.securitygroup[0].ingressrule ? 
+                              data.listsecuritygroupsresponse.securitygroup[0].ingressrule : [],
                             function(elem) {
                               return {
                                 id: elem.ruleid,
@@ -2765,7 +2841,8 @@
                       success: function(data) {
                         args.response.success({
                           data: $.map(
-                            data.listsecuritygroupsresponse.securitygroup[0].egressrule,
+                            data.listsecuritygroupsresponse.securitygroup[0].egressrule ? 
+                              data.listsecuritygroupsresponse.securitygroup[0].egressrule : [],
                             function(elem) {
                               return {
                                 id: elem.ruleid,

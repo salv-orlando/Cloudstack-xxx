@@ -246,11 +246,9 @@ public class ProjectManagerImpl implements ProjectManager, Manager{
     
     
     @Override
-    @ActionEvent(eventType = EventTypes.EVENT_PROJECT_DELETE, eventDescription = "deleting project", async = true)
-    @DB
-    public boolean deleteProject (long projectId) {
+    @ActionEvent(eventType = EventTypes.EVENT_PROJECT_DELETE, eventDescription = "deleting project", async = true) 
+    public boolean deleteProject(long projectId) {
         UserContext ctx = UserContext.current();
-        Account caller = ctx.getCaller();
         
         ProjectVO project= getProject(projectId);
         //verify input parameters
@@ -258,28 +256,39 @@ public class ProjectManagerImpl implements ProjectManager, Manager{
             throw new InvalidParameterValueException("Unable to find project by id " + projectId);
         }
         
-        _accountMgr.checkAccess(caller,AccessType.ModifyProject, true, _accountMgr.getAccount(project.getProjectAccountId()));
+        _accountMgr.checkAccess(ctx.getCaller(),AccessType.ModifyProject, true, _accountMgr.getAccount(project.getProjectAccountId()));
         
+        return deleteProject(ctx.getCaller(), ctx.getCallerUserId(), project);  
+    }
+
+    @DB
+    @Override
+    public boolean deleteProject(Account caller, long callerUserId, ProjectVO project) {
         //mark project as inactive first, so you can't add resources to it
         Transaction txn = Transaction.currentTxn();
         txn.start();
-        s_logger.debug("Marking project id=" + projectId + " with state " + State.Disabled + " as a part of project delete...");
+        s_logger.debug("Marking project id=" + project.getId() + " with state " + State.Disabled + " as a part of project delete...");
         project.setState(State.Disabled);
-        boolean updateResult = _projectDao.update(projectId, project);
-        _resourceLimitMgr.decrementResourceCount(getProjectOwner(projectId).getId(), ResourceType.project);
+        boolean updateResult = _projectDao.update(project.getId(), project);
+        //owner can be already removed at this point, so adding the conditional check
+        Account projectOwner = getProjectOwner(project.getId());
+        if (projectOwner != null) {
+            _resourceLimitMgr.decrementResourceCount(projectOwner.getId(), ResourceType.project);
+        } 
+        
         txn.commit();
         
         if (updateResult) {
-            if (!cleanupProject(project, _accountDao.findById(caller.getId()), ctx.getCallerUserId())) {
-                s_logger.warn("Failed to cleanup project's id=" + projectId + " resources, not removing the project yet");
+            if (!cleanupProject(project, _accountDao.findById(caller.getId()), callerUserId)) {
+                s_logger.warn("Failed to cleanup project's id=" + project.getId() + " resources, not removing the project yet");
                 return false;
             } else {
-                return _projectDao.remove(projectId);
+                return _projectDao.remove(project.getId());
             }
         } else {
-            s_logger.warn("Failed to mark the project id=" + projectId + " with state " + State.Disabled);
+            s_logger.warn("Failed to mark the project id=" + project.getId() + " with state " + State.Disabled);
             return false;
-        }  
+        }
     }
     
     @DB
@@ -376,16 +385,14 @@ public class ProjectManagerImpl implements ProjectManager, Manager{
             accountId = caller.getId();
         }
         
-        if (!listAll) {
-        	if (domainId == null && accountId == null) {
-        		accountId = caller.getId();
-        	} else {
-        		if (caller.getType() == Account.ACCOUNT_TYPE_DOMAIN_ADMIN || !isRecursive) {
-                    DomainVO domain = _domainDao.findById(caller.getDomainId());
-                    path = domain.getPath();
-                }
-        	}
+
+    	if (domainId == null && accountId == null) {
+    		accountId = caller.getId();
+    	} else if (caller.getType() == Account.ACCOUNT_TYPE_DOMAIN_ADMIN || (!isRecursive && !listAll)) {
+            DomainVO domain = _domainDao.findById(caller.getDomainId());
+            path = domain.getPath();
         }
+
         
         if (path != null) {
             SearchBuilder<DomainVO> domainSearch = _domainDao.createSearchBuilder();
@@ -444,16 +451,37 @@ public class ProjectManagerImpl implements ProjectManager, Manager{
         return _projectAccountDao.persist(new ProjectAccountVO(project, accountId, accountRole));
     }
     
-    @Override
+    @Override @DB
     public boolean deleteAccountFromProject(long projectId, long accountId) {
+        boolean success = true;
+        Transaction txn = Transaction.currentTxn();
+        txn.start();
+        
+        //remove account
         ProjectAccountVO projectAccount = _projectAccountDao.findByProjectIdAccountId(projectId, accountId);
-        return _projectAccountDao.remove(projectAccount.getId());
+        success = _projectAccountDao.remove(projectAccount.getId());
+        
+        //remove all invitations for account
+        if (success) {
+            s_logger.debug("Removed account " + accountId + " from project " + projectId + " , cleaning up old invitations for account/project...");
+            ProjectInvitation invite = _projectInvitationDao.findByAccountIdProjectId(accountId, projectId);
+            if (invite != null) {
+                success = success && _projectInvitationDao.remove(invite.getId());
+            }
+        }
+        
+        txn.commit();
+        return success;
     }
     
     @Override
     public Account getProjectOwner(long projectId) {
-        long accountId = _projectAccountDao.getProjectOwner(projectId).getAccountId();
-        return _accountMgr.getAccount(accountId);
+        ProjectAccount prAcct = _projectAccountDao.getProjectOwner(projectId);
+        if (prAcct != null) {
+            return _accountMgr.getAccount(prAcct.getAccountId());
+        }
+        
+        return null;
     }
     
     @Override
@@ -730,7 +758,8 @@ public class ProjectManagerImpl implements ProjectManager, Manager{
     	}
     	
         if (invite != null) {
-            if (invite.getState() == ProjectInvitation.State.Completed || _projectInvitationDao.isActive(invite.getId(), _invitationTimeOut)) {
+            if (invite.getState() == ProjectInvitation.State.Completed || 
+                    (invite.getState() == ProjectInvitation.State.Pending && _projectInvitationDao.isActive(invite.getId(), _invitationTimeOut))) {
             	return true;
             } else {
                 if (invite.getState() == ProjectInvitation.State.Pending) {

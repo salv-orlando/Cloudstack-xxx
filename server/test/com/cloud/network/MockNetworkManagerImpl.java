@@ -292,7 +292,7 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
     }
 
     @Override
-    public void shutdownNetwork(long networkId, ReservationContext context, boolean cleanupElements) {
+    public boolean shutdownNetwork(long networkId, ReservationContext context, boolean cleanupElements) {
         // TODO Auto-generated method stub
 
     }
@@ -514,7 +514,7 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
     }
 
     @Override
-    public long findPhysicalNetworkId(long zoneId, String tag) {
+    public long findPhysicalNetworkId(long zoneId, String tag, TrafficType trafficType) {
         // TODO Auto-generated method stub
         return 0;
     }
@@ -739,7 +739,7 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
     }
 
     @Override
-    public boolean areServicesEnabledInZone(long zoneId, long networkOfferingId, String tags, List<Service> services) {
+    public boolean areServicesEnabledInZone(long zoneId, NetworkOffering offering, List<Service> services) {
         // TODO Auto-generated method stub
         return false;
     }
@@ -770,7 +770,7 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
 
 	@Override
 	public IpAddress allocateIP(long networkId, Account ipOwner,
-			boolean isElastic) throws ResourceAllocationException,
+			boolean isSystem) throws ResourceAllocationException,
 			InsufficientAddressCapacityException, ConcurrentOperationException {
 		// TODO Auto-generated method stub
 		return null;
@@ -778,7 +778,7 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
 
 	@Override
 	public PublicIp assignPublicIpAddress(long dcId, Long podId, Account owner,
-			VlanType type, Long networkId, String requestedIp, boolean isElastic)
+			VlanType type, Long networkId, String requestedIp, boolean isSystem)
 			throws InsufficientAddressCapacityException {
 		// TODO Auto-generated method stub
 		return null;
@@ -798,7 +798,7 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
 	}
 
 	@Override
-	public IpAddress assignElasticIp(long networkId, Account owner,
+	public IpAddress assignSystemIp(long networkId, Account owner,
 			boolean forElasticLb, boolean forElasticIp)
 			throws InsufficientAddressCapacityException {
 		// TODO Auto-generated method stub
@@ -806,7 +806,7 @@ public class MockNetworkManagerImpl implements NetworkManager, Manager, NetworkS
 	}
 
 	@Override
-	public boolean handleElasticIpRelease(IpAddress ip) {
+	public boolean handleSystemIpRelease(IpAddress ip) {
 		// TODO Auto-generated method stub
 		return false;
 	}

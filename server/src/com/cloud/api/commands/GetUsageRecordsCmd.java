@@ -261,8 +261,8 @@ public class GetUsageRecordsCmd extends BaseListCmd {
                 } else if(usageRecord.getUsageType() == UsageTypes.IP_ADDRESS){
                 	//isSourceNAT
                     usageRecResponse.setSourceNat((usageRecord.getType().equals("SourceNat"))?true:false);
-                    //isElastic
-                    usageRecResponse.setElastic((usageRecord.getSize() == 1)?true:false);
+                    //isSystem
+                    usageRecResponse.setSystem((usageRecord.getSize() == 1)?true:false);
                     //IP Address ID
                     usageRecResponse.setUsageId(identityDao.getIdentityUuid("user_ip_address", usageRecord.getUsageId().toString()));
                     
@@ -318,6 +318,10 @@ public class GetUsageRecordsCmd extends BaseListCmd {
                 } else if(usageRecord.getUsageType() == UsageTypes.VPN_USERS){
                     //VPN User ID
                     usageRecResponse.setUsageId(usageRecord.getUsageId().toString());
+                    
+                } else if(usageRecord.getUsageType() == UsageTypes.SECURITY_GROUP){
+                	//Security Group Id
+                	usageRecResponse.setUsageId(identityDao.getIdentityUuid("security_group", usageRecord.getUsageId().toString()));
                 }
                 
                 if (usageRecord.getRawUsage() != null) {

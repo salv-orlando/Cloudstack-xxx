@@ -81,7 +81,7 @@ public interface NetworkManager extends NetworkService {
      * @throws InsufficientAddressCapacityException
      */
 
-    PublicIp assignPublicIpAddress(long dcId, Long podId, Account owner, VlanType type, Long networkId, String requestedIp, boolean isElastic) throws InsufficientAddressCapacityException;
+    PublicIp assignPublicIpAddress(long dcId, Long podId, Account owner, VlanType type, Long networkId, String requestedIp, boolean isSystem) throws InsufficientAddressCapacityException;
 
     /**
      * assigns a source nat ip address to an account within a network.
@@ -163,7 +163,7 @@ public interface NetworkManager extends NetworkService {
 
     <T extends VMInstanceVO> void prepareNicForMigration(VirtualMachineProfile<T> vm, DeployDestination dest);
 
-    void shutdownNetwork(long networkId, ReservationContext context, boolean cleanupElements);
+    boolean shutdownNetwork(long networkId, ReservationContext context, boolean cleanupElements);
 
     boolean destroyNetwork(long networkId, ReservationContext context);
 
@@ -276,7 +276,7 @@ public interface NetworkManager extends NetworkService {
 
     List<Service> listNetworkOfferingServices(long networkOfferingId);
 
-    boolean areServicesEnabledInZone(long zoneId, long networkOfferingId, String tags, List<Service> services);
+    boolean areServicesEnabledInZone(long zoneId, NetworkOffering offering, List<Service> services);
 
     public Map<PublicIp, Set<Service>> getIpToServices(List<PublicIp> publicIps, boolean rulesRevoked, boolean includingFirewall);
 
@@ -291,11 +291,11 @@ public interface NetworkManager extends NetworkService {
 
     Provider getDefaultUniqueProviderForService(String serviceName);
 
-    IpAddress assignElasticIp(long networkId, Account owner,
+    IpAddress assignSystemIp(long networkId, Account owner,
             boolean forElasticLb, boolean forElasticIp)
             throws InsufficientAddressCapacityException;
 
-    boolean handleElasticIpRelease(IpAddress ip);
+    boolean handleSystemIpRelease(IpAddress ip);
 
     void checkNetworkPermissions(Account owner, Network network);
 

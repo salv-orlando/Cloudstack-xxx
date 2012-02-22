@@ -41,6 +41,7 @@ import com.cloud.api.response.F5LoadBalancerResponse;
 import com.cloud.configuration.Config;
 import com.cloud.configuration.ConfigurationManager;
 import com.cloud.configuration.dao.ConfigurationDao;
+import com.cloud.dc.DataCenter;
 import com.cloud.dc.DataCenterVO;
 import com.cloud.dc.dao.DataCenterDao;
 import com.cloud.deploy.DeployDestination;
@@ -138,9 +139,7 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         try {
             return manageGuestNetworkWithExternalLoadBalancer(true, guestConfig);
         } catch (InsufficientCapacityException capacityException) {
-            // TODO: handle out of capacity exception in graceful manner when multiple providers are avaialble for the
-// network
-            return false;
+            throw new ResourceUnavailableException("There are no F5 load balancer devices with the free capacity for implementing this network", DataCenter.class, guestConfig.getDataCenterId());
         }
     }
 
@@ -199,7 +198,7 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         lbCapabilities.put(Capability.SupportedLBAlgorithms, "roundrobin,leastconn");
 
         // specifies that F5 BIG IP network element can provide shared mode only
-        lbCapabilities.put(Capability.SupportedLBIsolation, "shared");
+        lbCapabilities.put(Capability.SupportedLBIsolation, "dedicated, shared");
 
         // Specifies that load balancing rules can be made for either TCP or UDP traffic
         lbCapabilities.put(Capability.SupportedProtocols, "tcp,udp");
@@ -214,11 +213,7 @@ public class F5ExternalLoadBalancerElement extends ExternalLoadBalancerDeviceMan
         List<LbStickinessMethod> methodList = new ArrayList<LbStickinessMethod>();
         method = new LbStickinessMethod(StickinessMethodType.LBCookieBased, "This is cookie based sticky method, can be used only for http");
         methodList.add(method);
-        method.addParam("holdtime", false, "time period for which persistence is in effect.", false);
-
-        method = new LbStickinessMethod(StickinessMethodType.SourceBased, "This is source based sticky method, can be used for any type of protocol.");
-        methodList.add(method);
-        method.addParam("holdtime", false, "time period for which persistence is in effect.", false);
+        method.addParam("holdtime", false, "time period (in seconds) for which persistence is in effect.", false);
 
         Gson gson = new Gson();
         String stickyMethodList = gson.toJson(methodList);

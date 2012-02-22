@@ -88,6 +88,7 @@ import com.cloud.projects.Project;
 import com.cloud.projects.Project.ListProjectResourcesCriteria;
 import com.cloud.projects.ProjectInvitationVO;
 import com.cloud.projects.ProjectManager;
+import com.cloud.projects.ProjectVO;
 import com.cloud.projects.dao.ProjectAccountDao;
 import com.cloud.projects.dao.ProjectDao;
 import com.cloud.server.auth.UserAuthenticator;
@@ -445,20 +446,15 @@ public class AccountManagerImpl implements AccountManager, AccountService, Manag
     @Override
     public boolean deleteAccount(AccountVO account, long callerUserId, Account caller) {
         long accountId = account.getId();
-
+        
+        //delete the account record
         if (!_accountDao.remove(accountId)) {
             s_logger.error("Unable to delete account " + accountId);
             return false;
         }
 
-        List<UserVO> users = _userDao.listByAccount(accountId);
-
-        for (UserVO user : users) {
-            _userDao.remove(user.getId());
-        }
-
         if (s_logger.isDebugEnabled()) {
-            s_logger.debug("Remove account " + accountId);
+            s_logger.debug("Removed account " + accountId);
         }
 
         return cleanupAccount(account, callerUserId, caller);
@@ -468,8 +464,20 @@ public class AccountManagerImpl implements AccountManager, AccountService, Manag
     public boolean cleanupAccount(AccountVO account, long callerUserId, Account caller) {
         long accountId = account.getId();
         boolean accountCleanupNeeded = false;
-
+        
         try {
+            //cleanup the users from the account
+            List<UserVO> users = _userDao.listByAccount(accountId);
+            for (UserVO user : users) {
+                if (!_userDao.remove(user.getId())) {
+                    s_logger.error("Unable to delete user: " + user + " as a part of account " + account + " cleanup");
+                    accountCleanupNeeded = true;
+                }
+            }
+            
+            //delete the account from project accounts
+            _projectAccountDao.removeAccountFromProjects(accountId);
+            
             // delete all vm groups belonging to accont
             List<InstanceGroupVO> groups = _vmGroupDao.listByAccountId(accountId);
             for (InstanceGroupVO group : groups) {
@@ -582,7 +590,7 @@ public class AccountManagerImpl implements AccountManager, AccountService, Manag
             }
 
             // delete account specific Virtual vlans (belong to system Public Network) - only when networks are cleaned
-// up
+            // up
             // successfully
             if (networksDeleted) {
                 if (!_configMgr.deleteAccountSpecificVirtualRanges(accountId)) {
@@ -1010,7 +1018,7 @@ public class AccountManagerImpl implements AccountManager, AccountService, Manag
         }
 
         // Account that manages project(s) can't be removed
-        List<Long> managedProjectIds = _projectAccountDao.listAdministratedProjects(accountId);
+        List<Long> managedProjectIds = _projectAccountDao.listAdministratedProjectIds(accountId);
         if (!managedProjectIds.isEmpty()) {
             StringBuilder projectIds = new StringBuilder();
             for (Long projectId : managedProjectIds) {
@@ -1292,14 +1300,14 @@ public class AccountManagerImpl implements AccountManager, AccountService, Manag
                     }
 
                     // cleanup inactive projects
-                    List<? extends Project> inactiveProjects = _projectDao.listByState(Project.State.Disabled);
+                    List<ProjectVO> inactiveProjects = _projectDao.listByState(Project.State.Disabled);
                     s_logger.info("Found " + inactiveProjects.size() + " disabled projects to cleanup");
-                    for (Project project : inactiveProjects) {
+                    for (ProjectVO project : inactiveProjects) {
                         try {
                             Account projectAccount = getAccount(project.getProjectAccountId());
                             if (projectAccount == null) {
                                 s_logger.debug("Removing inactive project id=" + project.getId());
-                                _projectMgr.deleteProject(project.getId());
+                                _projectMgr.deleteProject(UserContext.current().getCaller(), UserContext.current().getCallerUserId(), project);
                             } else {
                                 s_logger.debug("Can't remove disabled project " + project + " as it has non removed account id=" + project.getId());
                             }
@@ -1748,7 +1756,7 @@ public class AccountManagerImpl implements AccountManager, AccountService, Manag
         return _accountDao.findUserAccountByApiKey(apiKey);
     }
 
-    @Override
+    @Override @DB
     public String[] createApiKeyAndSecretKey(RegisterCmd cmd) {
         Long userId = cmd.getId();
 
@@ -1758,8 +1766,11 @@ public class AccountManagerImpl implements AccountManager, AccountService, Manag
 
         // generate both an api key and a secret key, update the user table with the keys, return the keys to the user
         String[] keys = new String[2];
+        Transaction txn = Transaction.currentTxn();
+        txn.start();
         keys[0] = createUserApiKey(userId);
         keys[1] = createUserSecretKey(userId);
+        txn.commit();
 
         return keys;
     }

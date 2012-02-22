@@ -325,12 +325,12 @@ public class ApiConstants {
     public static final String TRAFFIC_TYPE_IMPLEMENTOR = "traffictypeimplementor";
     public static final String KEYWORD = "keyword";
     public static final String LIST_ALL = "listall";
-    public static final String IS_ELASTIC = "iselastic";
     public static final String SPECIFY_IP_RANGES = "specifyipranges";
     public static final String IS_SOURCE_NAT = "issourcenat";
     public static final String IS_STATIC_NAT = "isstaticnat";
     public static final String SORT_BY = "sortby";
     public static final String CHANGE_CIDR = "changecidr";
+    public static final String PURPOSE = "purpose";
     
     public enum HostDetails {
         all, capacity, events, stats, min;

@@ -4,51 +4,51 @@
   var networkServiceObjs = [], serviceCheckboxNames = [];
 	
   cloudStack.sections.configuration = {
-    title: 'Configuration',
+    title: 'label.menu.service.offerings',
     id: 'configuration',
     sectionSelect: {
-      label: 'Select view'
+      label: 'label.select.offering'
     },
     sections: {
       serviceOfferings: {
         type: 'select',
-        title: 'Service offerings',
+        title: 'label.compute.offerings',
         listView: {
           id: 'serviceOfferings',
-          label: 'Service offerings',
+          label: 'label.menu.service.offerings',
           fields: {
-            name: { label: 'Name', editable: true },
-            displaytext: { label: 'Description' }
+            name: { label: 'label.name', editable: true },
+            displaytext: { label: 'label.description' }
           },
 
           reorder: cloudStack.api.actions.sort('updateServiceOffering', 'serviceOfferings'),
 
           actions: {
             add: {
-              label: 'Add service offering',
+              label: 'label.add.compute.offering',
 
               messages: {
                 confirm: function(args) {
-                  return 'Are you sure you want to add a service offering?';
+                  return 'message.add.service.offering';
                 },
                 notification: function(args) {
-                  return 'Creating new service offering';
+                  return 'label.add.compute.offering';
                 }
               },
 
               createForm: {
-                title: 'Add service offering',
+                title: 'label.add.compute.offering',
                 fields: {
                   name: {
-                    label: 'Name',
+                    label: 'label.name',
                     validation: { required: true }
                   },
                   description: {
-                    label: 'Description',
+                    label: 'label.description',
                     validation: { required: true }
                   },
                   storageType: {
-                    label: 'Storage type',
+                    label: 'label.storage.type',
                     select: function(args) {
                       var items = [];
                       items.push({id: 'shared', description: 'shared'});
@@ -57,57 +57,57 @@
                     }
                   },
                   cpuNumber: {
-                    label: '# of CPU cores',
+                    label: 'label.num.cpu.cores',
                     validation: {
                       required: true,
                       number: true
                     }
                   },
                   cpuSpeed: {
-                    label: 'CPU (in MHz)',
+                    label: 'label.cpu.mhz',
                     validation: {
                       required: true,
                       number: true
                     }
                   },
                   memory: {
-                    label: 'Memory (in MB)',
+                    label: 'label.memory.mb',
                     validation: {
                       required: true,
                       number: true
                     }
                   },
                   networkRate: {
-                    label: 'Network rate',
+                    label: 'label.network.rate',
                     validation: {
                       required: false, //optional
                       number: true
                     }
                   },
                   offerHA: {
-                    label: 'Offer HA',
+                    label: 'label.offer.ha',
                     isBoolean: true,
                     isChecked: false
                   },
                   storageTags: {
-                    label: 'Storage tags'
+                    label: 'label.storage.tags'
                   },
                   hostTags: {
-                    label: 'Host tags'
+                    label: 'label.host.tags'
                   },
                   cpuCap: {
-                    label: 'CPU cap',
+                    label: 'label.CPU.cap',
                     isBoolean: true,
                     isChecked: false
                   },
                   isPublic: {
-                    label: 'Public',
+                    label: 'label.public',
                     isBoolean: true,
                     isReverse: true,
                     isChecked: true
                   },
                   domainId: {
-                    label: 'Domain',
+                    label: 'label.domain',
                     dependsOn: 'isPublic',
                     select: function(args) {		
                       $.ajax({
@@ -210,7 +210,7 @@
             name: 'Service offering details',
             actions: {
               edit: {
-                label: 'Edit',
+                label: 'label.edit',
                 action: function(args) {
                   var array1 = [];
                   array1.push("&name=" + todb(args.data.name));
@@ -230,13 +230,13 @@
               },
 
               'delete': {
-                label: 'Delete service offering',
+                label: 'label.action.delete.service.offering',
                 messages: {
                   confirm: function(args) {
-                    return 'Are you sure you want to delete this service offering?';
+                    return 'message.action.delete.service.offering';
                   },
                   notification: function(args) {
-                    return 'Deleting service offering';
+                    return 'label.action.delete.service.offering';
                   }
                 },
                 action: function(args) {
@@ -262,48 +262,48 @@
 
             tabs: {
               details: {
-                title: 'Details',
+                title: 'label.details',
 
                 fields: [
                   {
                     name: {
-                      label: 'Name',
+                      label: 'label.name',
                       isEditable: true
                     }
                   },
                   {
-                    id: { label: 'ID' },
+                    id: { label: 'label.id' },
                     displaytext: {
-                      label: 'Description',
+                      label: 'label.description',
                       isEditable: true
                     },
-                    storagetype: { label: 'Storage Type' },
-                    cpunumber: { label: 'CPU number' },
+                    storagetype: { label: 'label.storage.type' },
+                    cpunumber: { label: 'label.num.cpu.cores' },
                     cpuspeed: {
-                      label: 'CPU speed',
+                      label: 'label.cpu.mhz',
                       converter: function(args) {
                         return cloudStack.converters.convertHz(args);
                       }
                     },
                     memory: {
-                      label: 'Memory',
+                      label: 'label.memory.mb',
                       converter: function(args) {
                         return cloudStack.converters.convertBytes(args*1024*1024);
                       }
                     },
-                    networkrate: { label: 'Network rate' },
+                    networkrate: { label: 'label.network.rate' },
                     offerha: {
-                      label: 'Offer HA',
+                      label: 'label.offer.ha',
                       converter: cloudStack.converters.toBooleanText
                     },
                     limitcpuuse: {
-                      label: 'CPU cap',
+                      label: 'label.CPU.cap',
                       converter: cloudStack.converters.toBooleanText
                     },
-                    tags: { label: 'Storage tags' },
-                    hosttags: { label: 'Host tags' },
-                    domain: { label: 'Domain' },
-                    created: { label: 'Created', converter: cloudStack.converters.toLocalDate }
+                    tags: { label: 'label.storage.tags' },
+                    hosttags: { label: 'label.host.tags' },
+                    domain: { label: 'label.domain' },
+                    created: { label: 'label.created', converter: cloudStack.converters.toLocalDate }
                   }
                 ],
 
@@ -323,43 +323,48 @@
 
       systemServiceOfferings: {
         type: 'select',
-        title: 'System service offerings',
+        title: 'label.menu.system.service.offerings',
         listView: {
           id: 'systemServiceOfferings',
-          label: 'System service offerings',
+          label: 'label.menu.system.service.offerings',
           fields: {
-            name: { label: 'Name', editable: true },
-            displaytext: { label: 'Description' }
+            name: { 
+						  label: 'label.name', 
+							editable: true 
+						},
+            displaytext: { 
+						  label: 'label.description' 
+						}
           },
 
           reorder: cloudStack.api.actions.sort('updateServiceOffering', 'systemServiceOfferings'),
 
           actions: {
             add: {
-              label: 'Add system service offering',
+              label: 'label.add.system.service.offering',
 
               messages: {
                 confirm: function(args) {
-                  return 'Are you sure you want to add a system service offering?';
+                  return 'message.add.system.service.offering';
                 },
                 notification: function(args) {
-                  return 'Creating new system service offering';
+                  return 'label.add.system.service.offering';
                 }
               },
 
               createForm: {
-                title: 'Add system service offering',
+                title: 'label.add.system.service.offering',
                 fields: {
                   name: {
-                    label: 'Name',
+                    label: 'label.name',
                     validation: { required: true }
                   },
                   description: {
-                    label: 'Description',
+                    label: 'label.description',
                     validation: { required: true }
                   },
                   storageType: {
-                    label: 'Storage type',
+                    label: 'label.storage.type',
                     select: function(args) {
                       var items = [];
                       items.push({id: 'shared', description: 'shared'});
@@ -368,57 +373,57 @@
                     }
                   },
                   cpuNumber: {
-                    label: '# of CPU cores',
+                    label: 'label.num.cpu.cores',
                     validation: {
                       required: true,
                       number: true
                     }
                   },
                   cpuSpeed: {
-                    label: 'CPU (in MHz)',
+                    label: 'label.cpu.mhz',
                     validation: {
                       required: true,
                       number: true
                     }
                   },
                   memory: {
-                    label: 'Memory (in MB)',
+                    label: 'label.memory.mb',
                     validation: {
                       required: true,
                       number: true
                     }
                   },
                   networkRate: {
-                    label: 'Network rate',
+                    label: 'label.network.rate',
                     validation: {
                       required: false, //optional
                       number: true
                     }
                   },
                   offerHA: {
-                    label: 'Offer HA',
+                    label: 'label.offer.ha',
                     isBoolean: true,
                     isChecked: false
                   },
                   storageTags: {
-                    label: 'Storage tags'
+                    label: 'label.storage.tags'
                   },
                   hostTags: {
-                    label: 'Host tags'
+                    label: 'label.host.tags'
                   },
                   cpuCap: {
-                    label: 'CPU cap',
+                    label: 'label.CPU.cap',
                     isBoolean: true,
                     isChecked: false
                   },
                   isPublic: {
-                    label: 'Public',
+                    label: 'label.public',
                     isBoolean: true,
                     isReverse: true,
                     isChecked: true
                   },
                   domainId: {
-                    label: 'Domain',
+                    label: 'label.domain',
                     dependsOn: 'isPublic',
                     select: function(args) {										
                       $.ajax({
@@ -518,7 +523,7 @@
             name: 'System service offering details',
             actions: {
               edit: {
-                label: 'Edit',
+                label: 'label.edit',
                 action: function(args) {
                   var array1 = [];
                   array1.push("&name=" + todb(args.data.name));
@@ -538,13 +543,13 @@
               },
 
               'delete': {
-                label: 'Delete system service offering',
+                label: 'label.action.delete.system.service.offering',
                 messages: {
                   confirm: function(args) {
-                    return 'Are you sure you want to delete this system service offering?';
+                    return 'message.action.delete.system.service.offering';
                   },
                   notification: function(args) {
-                    return 'Deleting system service offering';
+                    return 'label.action.delete.system.service.offering';
                   }
                 },
                 action: function(args) {
@@ -570,48 +575,48 @@
 
             tabs: {
               details: {
-                title: 'Details',
+                title: 'label.details',
 
                 fields: [
                   {
                     name: {
-                      label: 'Name',
+                      label: 'label.name',
                       isEditable: true
                     }
                   },
                   {
-                    id: { label: 'ID' },
+                    id: { label: 'label.id' },
                     displaytext: {
-                      label: 'Description',
+                      label: 'label.description',
                       isEditable: true
                     },
-                    storagetype: { label: 'Storage Type' },
-                    cpunumber: { label: 'CPU number' },
+                    storagetype: { label: 'label.storage.type' },
+                    cpunumber: { label: 'label.num.cpu.cores' },
                     cpuspeed: {
-                      label: 'CPU speed',
+                      label: 'label.cpu.mhz',
                       converter: function(args) {
                         return cloudStack.converters.convertHz(args);
                       }
                     },
                     memory: {
-                      label: 'Memory',
+                      label: 'label.memory.mb',
                       converter: function(args) {
                         return cloudStack.converters.convertBytes(args*1024*1024);
                       }
                     },
-                    networkrate: { label: 'Network rate' },
+                    networkrate: { label: 'label.network.rate' },
                     offerha: {
-                      label: 'Offer HA',
+                      label: 'label.offer.ha',
                       converter: cloudStack.converters.toBooleanText
                     },
                     limitcpuuse: {
-                      label: 'CPU cap',
+                      label: 'label.CPU.cap',
                       converter: cloudStack.converters.toBooleanText
                     },
-                    tags: { label: 'Storage tags' },
-                    hosttags: { label: 'Host tags' },
-                    domain: { label: 'Domain' },
-                    created: { label: 'Created', converter: cloudStack.converters.toLocalDate }
+                    tags: { label: 'label.storage.tags' },
+                    hosttags: { label: 'label.host.tags' },
+                    domain: { label: 'label.domain' },
+                    created: { label: 'label.created', converter: cloudStack.converters.toLocalDate }
                   }
                 ],
 
@@ -631,22 +636,22 @@
 
       diskOfferings: {
         type: 'select',
-        title: 'Disk offerings',
+        title: 'label.menu.disk.offerings',
         listView: {
           id: 'diskOfferings',
-          label: 'Disk offerings',
+          label: 'label.menu.disk.offerings',
           fields: {
-            name: { label: 'Name' },
-            displaytext: { label: 'Description' },
+            name: { label: 'label.name' },
+            displaytext: { label: 'label.description' },
             iscustomized: {
-              label: 'Custom disk size',
+              label: 'label.custom.disk.size',
               converter: cloudStack.converters.toBooleanText
             },
             disksize: {
-              label: 'Disk Size',
+              label: 'label.disk.size.gb',
               converter: function(args) {
                 if(args != 0)
-                  return args + " GB";
+                  return args;
                 else
                   return "N/A";
               }
@@ -684,50 +689,50 @@
 
           actions: {
             add: {
-              label: 'Add disk offering',
+              label: 'label.add.disk.offering',
 
               messages: {
                 confirm: function(args) {
-                  return 'Are you sure you want to add a disk offering?';
+                  return 'message.add.disk.offering';
                 },
                 notification: function(args) {
-                  return 'Creating new disk offering';
+                  return 'label.add.disk.offering';
                 }
               },
 
               createForm: {
-                title: 'Add disk offering',
+                title: 'label.add.disk.offering',
                 fields: {
                   name: {
-                    label: 'Name',
+                    label: 'label.name',
                     validation: { required: true }
                   },
                   description: {
-                    label: 'Description',
+                    label: 'label.description',
                     validation: { required: true }
                   },
                   isCustomized: {
-                    label: 'Custom disk size',
+                    label: 'label.custom.disk.size',
                     isBoolean: true,
                     isReverse: true,
                     isChecked: false
                   },
                   disksize: {
-                    label: 'Disk size (in GB)',
+                    label: 'label.disk.size.gb',
                     dependsOn: 'isCustomized',
                     validation: { required: true, number: true }
                   },
                   tags: {
-                    label: 'Storage tags'
+                    label: 'label.storage.tags'
                   },
                   isPublic: {
-                    label: 'Public',
+                    label: 'label.public',
                     isBoolean: true,
                     isReverse: true,
                     isChecked: true
                   },
                   domainId: {
-                    label: 'Domain',
+                    label: 'label.domain',
                     dependsOn: 'isPublic',
                     select: function(args) {										 
                       $.ajax({
@@ -790,7 +795,7 @@
             name: 'Disk offering details',
             actions: {
               edit: {
-                label: 'Edit',
+                label: 'label.edit',
                 action: function(args) {
                   var array1 = [];
                   array1.push("&name=" + todb(args.data.name));
@@ -810,13 +815,13 @@
               },
 
               'delete': {
-                label: 'Delete disk offering',
+                label: 'label.action.delete.disk.offering',
                 messages: {
                   confirm: function(args) {
-                    return 'Are you sure you want to delete this disk offering?';
+                    return 'message.action.delete.disk.offering';
                   },
                   notification: function(args) {
-                    return 'Deleting disk offering';
+                    return 'label.action.delete.disk.offering';
                   }
                 },
                 action: function(args) {
@@ -842,36 +847,36 @@
 
             tabs: {
               details: {
-                title: 'Details',
+                title: 'label.details',
 
                 fields: [
                   {
                     name: {
-                      label: 'Name',
+                      label: 'label.name',
                       isEditable: true
                     }
                   },
                   {
-                    id: { label: 'ID' },
+                    id: { label: 'label.id' },
                     displaytext: {
-                      label: 'Description',
+                      label: 'label.description',
                       isEditable: true
                     },
                     iscustomized: {
-                      label: 'Custom disk size',
+                      label: 'label.custom.disk.size',
                       converter: cloudStack.converters.toBooleanText
                     },
                     disksize: {
-                      label: 'Disk Size',
+                      label: 'label.disk.size.gb',
                       converter: function(args) {
                         if(args != 0)
-                          return args + " GB";
+                          return args;
                         else
                           return "N/A";
                       }
                     },
-                    tags: { label: 'Storage tags' },
-                    domain: { label: 'Domain' }
+                    tags: { label: 'label.storage.tags' },
+                    domain: { label: 'label.domain' }
                   }
                 ],
 
@@ -887,114 +892,22 @@
             }
           }
         }
-      },
-
-      hypervisorCapabilities: {
-        type: 'select',
-        title: 'Hypervisor capabilities',
-        listView: {
-          id: 'hypervisorCapabilities',
-          label: 'Hypervisor capabilities',
-          fields: {
-            hypervisor: { label: 'Hypervisor' },
-            hypervisorversion: { label: 'Hypervisor version' },
-            maxguestslimit: { label: 'Max guest limit' }
-          },
-          dataProvider: function(args) {					  
-						var array1 = [];  
-						if(args.filterBy != null) {          
-							if(args.filterBy.search != null && args.filterBy.search.by != null && args.filterBy.search.value != null) {
-								switch(args.filterBy.search.by) {
-								case "name":
-									if(args.filterBy.search.value.length > 0)
-										array1.push("&keyword=" + args.filterBy.search.value);
-									break;
-								}
-							}
-						}				
-					
-            $.ajax({
-              url: createURL("listHypervisorCapabilities&page=" + args.page + "&pagesize=" + pageSize + array1.join("")),
-              dataType: "json",
-              async: true,
-              success: function(json) {
-                var items = json.listhypervisorcapabilitiesresponse.hypervisorCapabilities;
-                args.response.success({data:items});
-              },
-              error: function(data) {
-                args.response.error(parseXMLHttpResponse(data));
-              }
-            });
-          },
-
-          detailView: {
-            name: 'Details',
-            actions: {
-              edit: {
-                label: 'Edit',
-                action: function(args) {
-                  var array1 = [];
-                  array1.push("&maxguestslimit=" + todb(args.data.maxguestslimit));
-                  $.ajax({
-                    url: createURL("updateHypervisorCapabilities&id=" + args.context.hypervisorCapabilities[0].id + array1.join("")),
-                    dataType: "json",
-                    success: function(json) {
-                      var item = json.updatehypervisorcapabilitiesresponse['null'];
-                      args.response.success({data: item});
-                    },
-                    error: function(data) {
-                      args.response.error(parseXMLHttpResponse(data));
-                    }
-                  });
-                }
-              }
-            },
-
-            tabs: {
-              details: {
-                title: 'Details',
-                fields: [
-                  {
-                    id: { label: 'ID' },
-                    hypervisor: { label: 'Hypervisor' },
-                    hypervisorversion: { label: 'Hypervisor version' },
-                    maxguestslimit: {
-                      label: 'Max guest limit',
-                      isEditable: true
-                    },
-                    securitygroupenabled: {
-                      label: 'Security group enabled',
-                      converter: cloudStack.converters.toBooleanText
-                    }
-                  }
-                ],
-                dataProvider: function(args) {
-                  args.response.success(
-                    {
-                      data:args.context.hypervisorCapabilities[0]
-                    }
-                  );
-                }
-              }
-            }
-          }
-        }
-      },
+      },      
 
       networkOfferings: {
         type: 'select',
-        title: 'Network offerings',
+        title: 'label.menu.network.offerings',
         listView: {
           id: 'networkOfferings',
-          label: 'Network offerings',
+          label: 'label.menu.network.offerings',
           fields: {
-            name: { label: 'Name' },
+            name: { label: 'label.name' },
             state: {
               converter: function(str) {
                 // For localization
                 return str;
               },
-              label: 'State', indicator: { 'Enabled': 'on', 'Disabled': 'off', 'Destroyed': 'off' }
+              label: 'label.state', indicator: { 'Enabled': 'on', 'Disabled': 'off', 'Destroyed': 'off' }
             }
           },
 
@@ -1042,11 +955,10 @@
 
           actions: {
             add: {
-              label: 'Add network offering',
+              label: 'label.add.network.offering',
 
 							createForm: {
-                title: 'Add network offering',
-                desc: 'Please specify the network offering',																
+                title: 'label.add.network.offering',               														
 								preFilter: function(args) {
                   var $availability = args.$form.find('.form-item[rel=availability]');
                   var $serviceOfferingId = args.$form.find('.form-item[rel=serviceOfferingId]');
@@ -1080,18 +992,19 @@
                       $serviceOfferingId.css('display', 'inline-block');
                     else
                       $serviceOfferingId.hide();		
-											
+
+	                  $(':ui-dialog').dialog('option', 'position', 'center');
                   });
 								},				
                 fields: {
-                  name: { label: 'Name', validation: { required: true } },
+                  name: { label: 'label.name', validation: { required: true } },
 
-                  displayText: { label: 'Display Text', validation: { required: true } },
+                  displayText: { label: 'label.description', validation: { required: true } },
 
-                  networkRate: { label: 'Network Rate' },
+                  networkRate: { label: 'label.network.rate' },
 
                   trafficType: {
-                    label: 'Traffic Type', validation: { required: true },
+                    label: 'label.traffic.type', validation: { required: true },
                     select: function(args) {
                       args.response.success({
                         data: [
@@ -1102,7 +1015,7 @@
                   },
 
                   guestIpType: {
-                    label: 'Guest Type',
+                    label: 'label.guest.type',
                     select: function(args) {
                       args.response.success({
                         data: [
@@ -1123,10 +1036,10 @@
                     }
                   },
 
-                  specifyVlan: { label: 'Specify VLAN', isBoolean: true },																
+                  specifyVlan: { label: 'label.specify.vlan', isBoolean: true },																
 								
                   supportedServices: {
-                    label: 'Supported Services',
+                    label: 'label.supported.services',
 
                     dynamic: function(args) {
                       $.ajax({
@@ -1144,7 +1057,7 @@
                             // Sanitize names
                             switch (serviceName) {
                             case 'Vpn': serviceDisplayName = 'VPN'; break;
-                            case 'Dhcp': serviceDisplayName = 'DHCP'; break;
+                            case 'Dhcp': serviceDisplayName = dictionary['label.dhcp']; break;
                             case 'Dns': serviceDisplayName = 'DNS'; break;
                             case 'Lb': serviceDisplayName = 'Load Balancer'; break;
                             case 'SourceNat': serviceDisplayName = 'Source NAT'; break;
@@ -1244,7 +1157,7 @@
 
 									//show or hide upon checked services and selected providers above (begin)
                   serviceOfferingId: {
-                    label: 'Service Offering',
+                    label: 'label.compute.offering',
                     select: function(args) {
                       $.ajax({
                         url: createURL('listServiceOfferings&issystem=true'),
@@ -1276,14 +1189,14 @@
                   },
 									
                   "service.SourceNat.redundantRouterCapabilityCheckbox" : {
-                    label: "Redundant router capability",
+                    label: "label.redundant.router.capability",
                     isHidden: true,
                     dependsOn: 'service.SourceNat.isEnabled',
                     isBoolean: true
                   },
 
                   "service.SourceNat.sourceNatTypeDropdown": {
-                    label: 'Supported Source NAT type',
+                    label: 'label.supported.source.NAT.type',
                     isHidden: true,
                     dependsOn: 'service.SourceNat.isEnabled',
                     select: function(args) {
@@ -1296,13 +1209,13 @@
                     }
                   },
 									"service.Lb.elasticLbCheckbox" : {
-                    label: "Elastic LB",
+                    label: "label.elastic.LB",
                     isHidden: true,
                     dependsOn: 'service.Lb.isEnabled',
                     isBoolean: true
                   },
                   "service.Lb.lbIsolationDropdown": {
-                    label: 'LB isolation',
+                    label: 'label.LB.isolation',
                     isHidden: true,
                     dependsOn: 'service.Lb.isEnabled',
                     select: function(args) {
@@ -1315,7 +1228,7 @@
                     }
                   },									
 									"service.StaticNat.elasticIpCheckbox" : {
-										label: "Elastic IP",
+										label: "label.elastic.IP",
 										isHidden: true,
 										dependsOn: 'service.StaticNat.isEnabled',
 										isBoolean: true
@@ -1323,12 +1236,12 @@
                   //show or hide upon checked services and selected providers above (end)
 									
 									
-									conservemode: { label: 'Conserve mode', isBoolean: true },
+									conservemode: { label: 'label.conserve.mode', isBoolean: true },
 									
-                  tags: { label: 'Tags' },
+                  tags: { label: 'label.tags' },
 									
 									availability: {
-                    label: 'Availability',
+                    label: 'label.availability',
                     isHidden: true,  
                     select: function(args) {
                       args.response.success({
@@ -1483,7 +1396,7 @@
             name: 'Network offering details',
             actions: {						
 							edit: {
-                label: 'Edit',
+                label: 'label.edit',
                 action: function(args) {
                   var array1 = [];
                   array1.push("&name=" + todb(args.data.name));
@@ -1611,27 +1524,27 @@
             },
             tabs: {
               details: {
-                title: 'Details',
+                title: 'label.details',
 
                 fields: [
                   {
                     name: {
-                      label: 'Name',
+                      label: 'label.name',
                       isEditable: true
                     }
                   },
                   {
-                    id: { label: 'ID' },
+                    id: { label: 'label.id' },
                     displaytext: {
-                      label: 'Description',
+                      label: 'label.description',
                       isEditable: true
                     },
-                    state: { label: 'State' },
+                    state: { label: 'label.state' },
                     guestiptype: {
-                      label: 'Guest type'
+                      label: 'label.guest.type'
                     },
                     availability: {
-                      label: 'Availability',
+                      label: 'label.availability',
                       isEditable: true,
                       select: function(args) {
                         var items = [];
@@ -1642,23 +1555,23 @@
                       }
                     },
                     isdefault: { //created by system by default
-                      label: 'Created by system',
+                      label: 'label.created.by.system',
                       converter: cloudStack.converters.toBooleanText
                     },
                     specifyvlan: {
-                      label: 'Specify VLAN',
+                      label: 'label.specify.vlan',
                       converter: cloudStack.converters.toBooleanText
                     },
 										specifyipranges: { 
-										  label: 'Specify IP ranges', 
+										  label: 'label.specify.IP.ranges', 
 											converter: cloudStack.converters.toBooleanText
 										},
 										conservemode: {
-                      label: 'Conserve mode',
+                      label: 'label.conserve.mode',
                       converter: cloudStack.converters.toBooleanText
                     },
                     networkrate: {
-                      label: 'Network rate',
+                      label: 'label.network.rate',
                       converter: function(args) {
                         var networkRate = args;
                         if (args == null || args == -1) {
@@ -1671,13 +1584,13 @@
                       }
                     },
                     traffictype: {
-                      label: 'Traffic type'
+                      label: 'label.traffic.type'
                     },
                     supportedServices: {
-                      label: 'Services'
+                      label: 'label.supported.services'
                     },
                     serviceCapabilities: {
-                      label: 'Service Capabilities'
+                      label: 'label.service.capabilities'
                     }
                   }
                 ],

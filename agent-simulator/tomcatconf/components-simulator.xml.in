@@ -3,7 +3,7 @@
     <management-server class="com.cloud.server.ManagementServerSimulatorImpl" library="com.cloud.configuration.SimulatorComponentLibrary" extends="components.xml:management-server">
         <dao name="Configuration configuration server" class="com.cloud.configuration.dao.ConfigurationDaoImpl">
              <param name="premium">true</param>
-        </dao>
+         </dao>
         <adapters key="com.cloud.ha.Investigator">
             <adapter name="SimpleInvestigator" class="com.cloud.ha.CheckOnAgentInvestigator"/>
             <adapter name="PingInvestigator" class="com.cloud.ha.UserVmDomRInvestigator"/>

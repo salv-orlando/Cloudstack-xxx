@@ -645,3 +645,20 @@ UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'ovm.guest.n
 UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.public.network.device';
 UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.private.network.device';
 UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.guest.network.device';
+
+ALTER TABLE `cloud`.`physical_network_traffic_types` ADD COLUMN `ovm_network_label` varchar(255) COMMENT 'The network name label of the physical device dedicated to this traffic on a Ovm host';
+ALTER TABLE `cloud`.`dc_storage_network_ip_range` ADD COLUMN `gateway` varchar(15) NOT NULL COMMENT 'gateway ip address';
+
+CREATE TABLE  `cloud_usage`.`usage_security_group` (
+  `zone_id` bigint unsigned NOT NULL,
+  `account_id` bigint unsigned NOT NULL,
+  `domain_id` bigint unsigned NOT NULL,
+  `vm_instance_id` bigint unsigned NOT NULL,
+  `security_group_id` bigint unsigned NOT NULL,
+  `created` DATETIME NOT NULL,
+  `deleted` DATETIME NULL  
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+ALTER TABLE `cloud_usage`.`usage_security_group` ADD INDEX `i_usage_security_group__account_id`(`account_id`);
+ALTER TABLE `cloud_usage`.`usage_security_group` ADD INDEX `i_usage_security_group__created`(`created`);
+ALTER TABLE `cloud_usage`.`usage_security_group` ADD INDEX `i_usage_security_group__deleted`(`deleted`);
