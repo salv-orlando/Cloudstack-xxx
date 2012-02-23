@@ -368,7 +368,7 @@ def add_flow(bridge, **kwargs):
 	dl_dst = 'dl_dst' in kwargs and ",dl_dst=%s" % kwargs['dl_dst'] or ''
 	nw_src = 'nw_src' in kwargs and ",nw_src=%s" % kwargs['nw_src'] or ''
 	nw_dst = 'nw_dst' in kwargs and ",nw_dst=%s" % kwargs['nw_dst'] or ''
-	ip = 'nw_src' in kwargs or 'nw_dst' in kwargs and ',ip' or ''
+	ip = ('nw_src' in kwargs or 'nw_dst' in kwargs) and ',ip' or ''
 	actions = 'actions' in kwargs and ",actions=%s" % kwargs['actions'] or ''
 	flow = flow + in_port + dl_src + dl_dst + ip + nw_src + nw_dst + actions
 	pr("Flow to add:%s" %flow)
