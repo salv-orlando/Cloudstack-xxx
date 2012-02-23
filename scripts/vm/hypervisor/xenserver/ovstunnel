@@ -249,6 +249,9 @@ def create_tunnel (session, args):
 		pr("Tunnel interface validated:%s" %verify_interface_ip)
 		cmd_tun_ofport = [vsctlPath, "get", "interface", iface_uuid, "ofport"]
 		tun_ofport = do_cmd(cmd_tun_ofport)
+		# Ensure no trailing LF
+		if tun_ofport.endswith('\n'):
+			tun_ofport = tun_ofport[:-1]
 		# add flow entryies for dropping broadcast coming in from gre tunnel
 		pr("TUNNEL OFPORT:%s" %tun_ofport)
 		add_flow(bridge, priority=1000, in_port=tun_ofport,
@@ -268,7 +271,15 @@ def create_tunnel (session, args):
 						   "external_ids:xs-network-uuid=%s" % xs_nw_uuid,
 						   "type!=gre"]
 		pr("HERE-3")
-		vif_ofports = do_cmd(cmd_vif_ofports)
+		vif_ofports_str = do_cmd(cmd_vif_ofports)
+		vif_ofports = []
+		for line in vif_ofports_str.split('\n'):
+				elements = line.split(':')
+				if len(elements)==2:
+					# ensure no trailing \n is returned
+					if elements[1].endswith('\n'):
+						elements[1] = elements[1][:-1]
+					vif_ofports.append(elements[1])
 		pr("HERE-4:%s" %cmd_vif_ofports)
 		if len(vif_ofports) > 0:
 			action = "".join("output:%s," %ofport for ofport in vif_ofports)[:-1]
@@ -356,8 +367,9 @@ def add_flow(bridge, **kwargs):
 	dl_dst = 'dl_dst' in kwargs and ",dl_dst=%s" % kwargs['dl_dst'] or ''
 	nw_src = 'nw_src' in kwargs and ",nw_src=%s" % kwargs['nw_src'] or ''
 	nw_dst = 'nw_dst' in kwargs and ",nw_dst=%s" % kwargs['nw_dst'] or ''
+	ip = nw_src in kwargs or nw_dst in kwargs and ',ip' or ''
 	actions = 'actions' in kwargs and ",actions=%s" % kwargs['actions'] or ''
-	flow = flow + in_port + dl_src + dl_dst + nw_src + nw_dst + actions
+	flow = flow + in_port + dl_src + dl_dst + ip + nw_src + nw_dst + actions
 	pr("Flow to add:%s" %flow)
 	addflow = ["ovs-ofctl", "add-flow", bridge, flow]
 	do_cmd (addflow)
