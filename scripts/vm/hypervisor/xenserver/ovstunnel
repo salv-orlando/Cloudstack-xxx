@@ -216,7 +216,6 @@ def create_tunnel (session, args):
 	pr("bridge %s for creating tunnel - VERIFIED" % bridge)
 	tunnel_setup = False
 	drop_flow_setup = False
-	allow_flow_setup = False
 	try:
 		# Create a port and configure the tunnel interface for it
 		add_tunnel = [vsctlPath, "add-port", bridge, name, "--", "set", "interface",
