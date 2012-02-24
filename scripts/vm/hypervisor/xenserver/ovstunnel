@@ -61,7 +61,7 @@ def find_vifs_v5(xs_nw_uuid):
 		if vif_ofport.endswith('\n'):
 			vif_ofport = vif_ofport[:-1]
 		vif_ofports.append(vif_ofport.strip())
-	pr("Vif Ofports:%s" %vif_ofports)
+	pr("Vif Of-ports:%s" %vif_ofports)
 	return vif_ofports
 
 
@@ -80,7 +80,7 @@ def find_vifs_v6(xs_nw_uuid):
 				if elements[1].endswith('\n'):
 					elements[1] = elements[1][:-1]
 				vif_ofports.append(elements[1].strip())
-	pr("Vif ofports:%s" %vif_ofports)
+	pr("Vif of-ports:%s" %vif_ofports)
 	return vif_ofports
 
 vif_ofport_list_handlers = {
