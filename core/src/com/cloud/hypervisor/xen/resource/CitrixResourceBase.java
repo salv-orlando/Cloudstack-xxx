@@ -1124,6 +1124,7 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
             startVM(conn, host, vm, vmName);
 
             if (_isOvs) {
+            	// TODO(Salvatore-orlando): First option is to do per-NIC rules here
                 for (NicTO nic : vmSpec.getNics()) {
                     if (nic.getBroadcastType() == Networks.BroadcastDomainType.Vswitch) {
                         HashMap<String, String> args = parseDefaultOvsRuleComamnd(nic.getBroadcastUri().toString().substring(Networks.BroadcastDomainType.Vswitch.scheme().length() + "://".length()));
@@ -3376,6 +3377,7 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         } catch (XenAPIException e) {
             msg = "callHostPlugin failed for cmd: " + cmd + " with args " + getArgsString(args) + " due to " + e.toString();
             s_logger.warn(msg);
+            s_logger.debug("Exception message:" + e.getMessage());
         } catch (XmlRpcException e) {
             msg = "callHostPlugin failed for cmd: " + cmd + " with args " + getArgsString(args) + " due to " + e.getMessage();
             s_logger.debug(msg);
