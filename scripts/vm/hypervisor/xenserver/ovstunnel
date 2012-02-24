@@ -317,6 +317,7 @@ def create_tunnel(session, args):
 			tun_ofport = tun_ofport[:-1]
 		# add flow entryies for dropping broadcast coming in from gre tunnel
 		pr("TUNNEL OFPORT:%s" %tun_ofport)
+		"""
 		add_flow(bridge, priority=1000, in_port=tun_ofport,
 				dl_dst='ff:ff:ff:ff:ff:ff', actions='drop')
 		add_flow(bridge, priority=1000, in_port=tun_ofport,
@@ -329,7 +330,6 @@ def create_tunnel(session, args):
 		pr("HERE-1")
 		xs_nw_uuid = do_cmd(cmd_xs_nw_uuid)
 		pr("HERE-2")
-		#TODO: This does not work on XS 5.6
 				
 		host_list_cmd = [xePath, 'host-list', '--minimal']
 		host_list_str = do_cmd(host_list_cmd)
@@ -350,6 +350,7 @@ def create_tunnel(session, args):
 			add_flow(bridge, priority=1100, in_port=tun_ofport,
 					nw_dst='224.0.0.0/24', actions=action)
 		pr("HERE-6")
+		"""
 		return "SUCCESS:OK"
 	except:
 		pr("An unexpected error occured. Rolling back")
