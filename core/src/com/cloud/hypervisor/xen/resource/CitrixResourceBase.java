@@ -3377,7 +3377,6 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         } catch (XenAPIException e) {
             msg = "callHostPlugin failed for cmd: " + cmd + " with args " + getArgsString(args) + " due to " + e.toString();
             s_logger.warn(msg);
-            s_logger.debug("Exception message:" + e.getMessage());
         } catch (XmlRpcException e) {
             msg = "callHostPlugin failed for cmd: " + cmd + " with args " + getArgsString(args) + " due to " + e.getMessage();
             s_logger.debug(msg);
