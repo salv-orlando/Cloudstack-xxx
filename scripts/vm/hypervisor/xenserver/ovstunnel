@@ -335,7 +335,6 @@ def create_tunnel(session, args):
 		# need only first host
 		pr("HERE-3")
 		host_uuid = host_list_str.split(',')[0].strip()
-		"""
 		version_cmd = [xePath, 'host-param-get', 'uuid=%s' % host_uuid,
 					   'param-name=software-version', 'param-key=product_version']
 		version = do_cmd(version_cmd)
@@ -350,7 +349,6 @@ def create_tunnel(session, args):
 			add_flow(bridge, priority=1100, in_port=tun_ofport,
 					nw_dst='224.0.0.0/24', actions=action)
 		pr("HERE-6")
-		"""
 		return "SUCCESS:%s" % name
 	except:
 		pr("An unexpected error occured. Rolling back")
