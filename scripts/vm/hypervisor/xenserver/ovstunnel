@@ -28,6 +28,58 @@ vSwitchDaemonName = "ovs-vswitchd"
 logFile = "/var/log/ovstunnel.log"
 fLog = None
 
+def find_vifs_v5(xs_nw_uuid):
+	pr("Fetching vifs on networks - for XS version 5.x")
+	vif_uuids_cmd = [xePath, 'network-list', 'uuid=%s' %xs_nw_uuid,
+					'params=VIF-uuids', '--minimal']
+	vif_uuids_str = do_cmd(vif_uuids_cmd)
+	vif_uuids = vif_uuids_str.split(';')
+	vifs = []
+	for vif_uuid in vif_uuids:
+		vif_uuid = vif_uuid.strip()
+		vm_uuid_cmd = [xePath, 'vif-list', 'uuid=%s' %vif_uuid,
+					   'params=vm-uuid', '--minimal']
+		vm_uuid = do_cmd(vm_uuid_cmd)
+		dom_id_cmd = [xePath, 'vm-list', 'uuid=%s' %vm_uuid,
+					  'params=dom-id', '--minimal']
+		dom_id = do_cmd(dom_id_cmd)
+		device_cmd = [xePath, 'vif-list', 'uuid=%s' %vif_uuid,
+					  'params=device', '--minimal']
+		device = do_cmd(device_cmd)
+		vifs.append("vif%s.%s" % (dom_id, device))
+	pr("Vifs on network:%s" %vifs)
+	vif_ofports = []
+	for vif in vifs:
+		vif_ofport_cmd=[vsctlPath, 'get', 'interface', vif, 'ofport']
+		vif_ofport = do_cmd(vif_ofport_cmd).strip()
+		if vif_ofport.endswith('\n'):
+			vif_ofport = vif_ofport[:-1]
+		vif_ofports.append(vif_ofport)
+	pr("Vif Ofports:%s" %vif_ofports)
+	return vif_ofports
+
+
+def find_vifs_v6(xs_nw_uuid):
+	pr("Fetching vifs on networks - for XS version 6.x")
+	cmd_vif_ofports = [vsctlPath, "--", "--columns=ofport",
+					   "find", "interface",
+					   "external_ids:xs-network-uuid=%s" % xs_nw_uuid,
+					   "type!=gre"]
+	vif_ofports_str = do_cmd(cmd_vif_ofports)
+	vif_ofports = []
+	for line in vif_ofports_str.split('\n'):
+			elements = line.split(':')
+			if len(elements)==2:
+				# ensure no trailing \n is returned
+				if elements[1].endswith('\n'):
+					elements[1] = elements[1][:-1]
+				vif_ofports.append(elements[1])
+	pr("Vif ofports:%s" %vif_ofports)
+	return vif_ofports
+
+vif_ofport_list_handlers = {
+	'5': find_vifs_v5,
+	'6': find_vifs_v6}
 
 class PluginError(Exception):
     """Base Exception class for all plugin errors."""
@@ -267,21 +319,19 @@ def create_tunnel (session, args):
 		pr("HERE-1")
 		xs_nw_uuid = do_cmd(cmd_xs_nw_uuid)
 		pr("HERE-2")
-		cmd_vif_ofports = [vsctlPath, "--", "--columns=ofport",
-						   "find", "interface",
-						   "external_ids:xs-network-uuid=%s" % xs_nw_uuid,
-						   "type!=gre"]
-		pr("HERE-3")
-		vif_ofports_str = do_cmd(cmd_vif_ofports)
-		vif_ofports = []
-		for line in vif_ofports_str.split('\n'):
-				elements = line.split(':')
-				if len(elements)==2:
-					# ensure no trailing \n is returned
-					if elements[1].endswith('\n'):
-						elements[1] = elements[1][:-1]
-					vif_ofports.append(elements[1])
-		pr("HERE-4:%s" %cmd_vif_ofports)
+		#TODO: This does not work on XS 5.6
+				
+		host_list_cmd = [xePath, 'host-list', '--minimal']
+		host_list_str = do_cmd(host_list_cmd)
+		# need only first host
+		print("HERE-3")
+		host_uuid = host_list_str.split(',')[0].strip()
+		version_cmd = [xePath, 'host-param-get', 'uuid=%s' % host_uuid,
+					   'param-name=software-version', 'param-key=product_version']
+		version = do_cmd(version_cmd)
+		pr ("HERE-4")
+		vif_ofports = vif_ofport_list_handlers[version[0]](xs_nw_uuid)
+		pr("HERE-5")
 		if len(vif_ofports) > 0:
 			action = "".join("output:%s," %ofport for ofport in vif_ofports)[:-1]
 			pr("HERE-5")
