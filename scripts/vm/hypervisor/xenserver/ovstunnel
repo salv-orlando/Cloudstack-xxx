@@ -333,7 +333,7 @@ def create_tunnel(session, args):
 		host_list_cmd = [xePath, 'host-list', '--minimal']
 		host_list_str = do_cmd(host_list_cmd)
 		# need only first host
-		print("HERE-3")
+		pr("HERE-3")
 		host_uuid = host_list_str.split(',')[0].strip()
 		"""
 		version_cmd = [xePath, 'host-param-get', 'uuid=%s' % host_uuid,
