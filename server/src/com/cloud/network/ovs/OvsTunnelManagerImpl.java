@@ -318,4 +318,18 @@ public class OvsTunnelManagerImpl implements OvsTunnelManager {
         
     }
 
+	@Override
+	public void applyDefaultFlow(VirtualMachine instance,
+			DeployDestination dest) {
+		if (!_isEnabled) {
+			return;
+		}
+		
+		VirtualMachine.Type vmType = instance.getType();
+		if (vmType != VirtualMachine.Type.User
+				&& vmType != VirtualMachine.Type.DomainRouter) {
+			return;
+		}
+	}
+
 }

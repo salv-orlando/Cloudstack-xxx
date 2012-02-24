@@ -82,9 +82,9 @@ vif_ofport_list_handlers = {
 	'6': find_vifs_v6}
 
 class PluginError(Exception):
-    """Base Exception class for all plugin errors."""
-    def __init__(self, *args):
-        Exception.__init__(self, *args)
+	"""Base Exception class for all plugin errors."""
+	def __init__(self, *args):
+		Exception.__init__(self, *args)
 
 
 def echo(fn):
@@ -340,7 +340,7 @@ def create_tunnel (session, args):
 			add_flow(bridge, priority=1100, in_port=tun_ofport,
 					nw_dst='224.0.0.0/24', actions=action)
 		pr("HERE-6")
-		return "SUCCESS:%s" % name
+		return "SUCCESS:OK"
 	except:
 		pr("An unexpected error occured. Rolling back")
 		if tunnel_setup:
@@ -369,7 +369,7 @@ def del_flows(bridge, ofport):
 	do_cmd(delFlow)
 
 def del_port(bridge, port):
-	delPort = [vsctlPath, "del-port %s %s" % (bridge, port)]
+	delPort = [vsctlPath, "del-port", bridge, port]
 	do_cmd(delPort)
 
 @echo

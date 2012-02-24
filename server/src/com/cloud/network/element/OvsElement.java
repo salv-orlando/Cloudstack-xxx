@@ -90,12 +90,16 @@ public class OvsElement extends AdapterBase implements NetworkElement {
             return true;
         }
 
+        //NOTE (Salvatore Orlando): 
+        //The code for ovs Vlan Manager has not been touched. Only the OVS tunnel
+        //manager has been restored. Ideally, the code for OVS Vlan Manager should go.
         _ovsVlanMgr.VmCheckAndCreateTunnel(vm, dest);
         String command = _ovsVlanMgr.applyDefaultFlow(vm.getVirtualMachine(), dest);
         if (command != null) {
             nic.setBroadcastUri(BroadcastDomainType.Vswitch.toUri(command));
         }
         _ovsTunnelMgr.VmCheckAndCreateTunnel(vm, network, dest);
+        //_ovsTunnelMgr.applyDefaultFlow(vm.getVirtualMachine(), dest);
 
         return true;
     }

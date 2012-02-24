@@ -30,4 +30,6 @@ public interface OvsTunnelManager extends Manager {
     public void VmCheckAndCreateTunnel(VirtualMachineProfile<? extends VirtualMachine> vm, Network nw, DeployDestination dest);
     
     public void CheckAndDestroyTunnel(VirtualMachine vm);
+    
+    public void applyDefaultFlow(VirtualMachine instance, DeployDestination dest);
 }
