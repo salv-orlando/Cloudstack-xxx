@@ -322,7 +322,6 @@ def create_tunnel(session, args):
 		add_flow(bridge, priority=1000, in_port=tun_ofport,
 				nw_dst='224.0.0.0/24', actions='drop')
 		drop_flow_setup = True
-		"""
 		pr("Broadcast drop rules added")
 		# add flow entry for allowing broadcast to reach ports already configured on OVS bridge
 		cmd_xs_nw_uuid = [xePath, "network-list",
@@ -336,6 +335,7 @@ def create_tunnel(session, args):
 		# need only first host
 		print("HERE-3")
 		host_uuid = host_list_str.split(',')[0].strip()
+		"""
 		version_cmd = [xePath, 'host-param-get', 'uuid=%s' % host_uuid,
 					   'param-name=software-version', 'param-key=product_version']
 		version = do_cmd(version_cmd)
