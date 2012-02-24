@@ -182,7 +182,10 @@ def do_cmd(cmd):
 		pr("The command exited with the error code: %s (stderr output:%s)" 
 			% (ret_code, err))
 		raise PluginError(err)
-	return proc.stdout.read()
+	output = proc.stdout.read()
+	if output.endswith('\n'):
+		output = output[:-1]
+	return output
 
 
 ######################## GRE creation utils ##########################
@@ -239,7 +242,7 @@ def destroy_ovs_bridge(session, args):#
 
 	
 @echo
-def create_tunnel (session, args):
+def create_tunnel(session, args):
 	bridge = args.pop("bridge")
 	remote_ip = args.pop("remote_ip")
 	gre_key = args.pop("key")
@@ -347,12 +350,11 @@ def create_tunnel (session, args):
 			pr("Deleting GRE interface")
 			# Destroy GRE port and interface
 			del_port(bridge, name)
-			pass
 		if drop_flow_setup:
 			# Delete flows
-			pr("Deleting flow entriesfrom GRE interface")
+			pr("Deleting flow entries from GRE interface")
 			del_flows(bridge, tun_ofport)
-			pass
+		pr("About to re-raise - %s -%s" % (sys.exc_info()[0], sys.exc_info()[1]))
 		raise
 ######################## End GRE creation utils ##########################
 
