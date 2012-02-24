@@ -60,8 +60,8 @@ def find_vifs_v5(xs_nw_uuid):
 		vif_ofport = do_cmd(vif_ofport_cmd).strip()
 		if vif_ofport.endswith('\n'):
 			vif_ofport = vif_ofport[:-1]
-		vif_ofports.append(vif_ofport)
-	pr("Vif Ofports:%s" %vif_ofports)
+		vif_ofports.append(vif_ofport.strip())
+	pr("Vif Of-ports:%s" %vif_ofports)
 	return vif_ofports
 
 
@@ -79,8 +79,8 @@ def find_vifs_v6(xs_nw_uuid):
 				# ensure no trailing \n is returned
 				if elements[1].endswith('\n'):
 					elements[1] = elements[1][:-1]
-				vif_ofports.append(elements[1])
-	pr("Vif ofports:%s" %vif_ofports)
+				vif_ofports.append(elements[1].strip())
+	pr("Vif of-ports:%s" %vif_ofports)
 	return vif_ofports
 
 vif_ofport_list_handlers = {
@@ -110,7 +110,6 @@ def open_log ():
 		if fLog == None:
 			fLog = open (logFile, "a")
 	except IOError, e:
-		#print e
 		pass
 
 def pr (str):
