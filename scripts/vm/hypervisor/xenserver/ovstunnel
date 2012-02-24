@@ -37,6 +37,12 @@ def find_vifs_v5(xs_nw_uuid):
 	vifs = []
 	for vif_uuid in vif_uuids:
 		vif_uuid = vif_uuid.strip()
+		is_attached_cmd = [xePath, 'vif-list', 'uuid=%s' %vif_uuid,
+					       'params=currently-attached', '--minimal']
+		is_attached = do_cmd(is_attached_cmd)
+		# Consider only attached VIFs
+		if is_attached == 'false': 
+			continue
 		vm_uuid_cmd = [xePath, 'vif-list', 'uuid=%s' %vif_uuid,
 					   'params=vm-uuid', '--minimal']
 		vm_uuid = do_cmd(vm_uuid_cmd)
@@ -93,6 +99,7 @@ def echo(fn):
 		util.SMlog("#### VMOPS enter  %s ####" % name )
 		res = fn(*v, **k)
 		util.SMlog("#### VMOPS exit  %s ####" % name )
+		pr("%s is about to return the following:%s" %(name,res))
 		return res
 	return wrapped
 
