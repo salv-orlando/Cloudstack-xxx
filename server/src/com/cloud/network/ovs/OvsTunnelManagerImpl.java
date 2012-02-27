@@ -330,6 +330,9 @@ public class OvsTunnelManagerImpl implements OvsTunnelManager {
 				&& vmType != VirtualMachine.Type.DomainRouter) {
 			return;
 		}
+		
+		s_logger.debug("### Applying rules for allowing broadcast traffic");
+		
 	}
 
 }

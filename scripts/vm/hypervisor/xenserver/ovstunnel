@@ -61,7 +61,6 @@ def find_vifs_v5(xs_nw_uuid):
 		if vif_ofport.endswith('\n'):
 			vif_ofport = vif_ofport[:-1]
 		vif_ofports.append(vif_ofport.strip())
-	pr("Vif Of-ports:%s" %vif_ofports)
 	return vif_ofports
 
 
@@ -80,12 +79,12 @@ def find_vifs_v6(xs_nw_uuid):
 				if elements[1].endswith('\n'):
 					elements[1] = elements[1][:-1]
 				vif_ofports.append(elements[1].strip())
-	pr("Vif of-ports:%s" %vif_ofports)
 	return vif_ofports
 
 vif_ofport_list_handlers = {
 	'5': find_vifs_v5,
 	'6': find_vifs_v6}
+
 
 class PluginError(Exception):
 	"""Base Exception class for all plugin errors."""
@@ -261,7 +260,6 @@ def create_tunnel(session, args):
 	if res != "SUCCESS":
 		pr("Openvswitch running: NO")
 		return "FAILURE:%s" %res
-	pr("Openvswitch running: OK")
 	
 	# We need to keep the name below 14 characters
 	# src and target are enough - consider a fixed length hash
@@ -290,7 +288,6 @@ def create_tunnel(session, args):
 		res = do_cmd(verify_port)
 		# Expecting python-style list as output
 		iface_list = []
-		pr("RESULT FROM IFACE LIST:%s" %res)
 		if len(res) > 2:
 			iface_list = res.strip()[1:-1].split(',')
 		if len(iface_list) != 1:
@@ -315,7 +312,6 @@ def create_tunnel(session, args):
 		if tun_ofport.endswith('\n'):
 			tun_ofport = tun_ofport[:-1]
 		# add flow entryies for dropping broadcast coming in from gre tunnel
-		pr("TUNNEL OFPORT:%s" %tun_ofport)
 		add_flow(bridge, priority=1000, in_port=tun_ofport,
 				dl_dst='ff:ff:ff:ff:ff:ff', actions='drop')
 		add_flow(bridge, priority=1000, in_port=tun_ofport,
@@ -325,29 +321,22 @@ def create_tunnel(session, args):
 		# add flow entry for allowing broadcast to reach ports already configured on OVS bridge
 		cmd_xs_nw_uuid = [xePath, "network-list",
 						  "bridge=%s" % bridge, "--minimal"]
-		pr("HERE-1")
 		xs_nw_uuid = do_cmd(cmd_xs_nw_uuid)
-		pr("HERE-2")
 				
 		host_list_cmd = [xePath, 'host-list', '--minimal']
 		host_list_str = do_cmd(host_list_cmd)
 		# need only first host
-		pr("HERE-3")
 		host_uuid = host_list_str.split(',')[0].strip()
 		version_cmd = [xePath, 'host-param-get', 'uuid=%s' % host_uuid,
 					   'param-name=software-version', 'param-key=product_version']
 		version = do_cmd(version_cmd)
-		pr ("HERE-4")
 		vif_ofports = vif_ofport_list_handlers[version[0]](xs_nw_uuid)
-		pr("HERE-5")
 		if len(vif_ofports) > 0:
 			action = "".join("output:%s," %ofport for ofport in vif_ofports)[:-1]
-			pr("HERE-5")
 			add_flow(bridge, priority=1100, in_port=tun_ofport,
 					dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
 			add_flow(bridge, priority=1100, in_port=tun_ofport,
 					nw_dst='224.0.0.0/24', actions=action)
-		pr("HERE-6")
 		return "SUCCESS:%s" % name
 	except:
 		pr("An unexpected error occured. Rolling back")
@@ -359,25 +348,27 @@ def create_tunnel(session, args):
 			# Delete flows
 			pr("Deleting flow entries from GRE interface")
 			del_flows(bridge, tun_ofport)
-		pr("About to re-raise - %s -%s" % (sys.exc_info()[0], sys.exc_info()[1]))
 		raise
-######################## End GRE creation utils ##########################
+
 
 def del_all_flows(bridge):
-	delFlow = [ofctlPath, "del-flows %s" % bridge]
+	delFlow = [ofctlPath, "del-flows", bridge]
 	do_cmd(delFlow)
 
 	normalFlow = "priority=0 idle_timeout=0 hard_timeout=0 actions=normal"
 	add_flow(bridge, normalFlow)
+
 
 def del_flows(bridge, ofport):
 	""" removes flows configured for a specific of ports """
 	delFlow = [ofctlPath, 'del-flows', bridge, 'in_port=%s' % ofport]
 	do_cmd(delFlow)
 
+
 def del_port(bridge, port):
 	delPort = [vsctlPath, "del-port", bridge, port]
 	do_cmd(delPort)
+
 
 @echo
 def destroy_tunnel(session, args):
@@ -399,6 +390,7 @@ def destroy_tunnel(session, args):
 
 	return "SUCCESS"
 
+
 def get_field_of_interface(nameOruuid, field):
 	listIface = [vsctlPath, "list interface", nameOruuid]
 	res = do_cmd(listIface, True)
@@ -415,7 +407,6 @@ def add_flow(bridge, **kwargs):
 	Builds a flow expression for **kwargs and adds the flow entry
 	to an Open vSwitch instance
 	"""
-	pr("I am in add_flow")
 	flow = "hard_timeout=%s,idle_timeout=%s,priority=%s"\
 			% (kwargs.get('hard_timeout','0'),
 			   kwargs.get('idle_timeout','0'),
@@ -431,7 +422,7 @@ def add_flow(bridge, **kwargs):
 	pr("Flow to add:%s" %flow)
 	addflow = ["ovs-ofctl", "add-flow", bridge, flow]
 	do_cmd(addflow)
-	pr("Flow added")
+
 
 if __name__ == "__main__":
 	open_log()
