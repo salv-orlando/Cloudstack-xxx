@@ -3,6 +3,7 @@
 #
 # A plugin for executing script needed by vmops cloud 
 
+import cloudstack_pluginlib as pluginlib
 import os, sys, time
 import subprocess
 import XenAPIPlugin
@@ -312,10 +313,10 @@ def create_tunnel(session, args):
 		if tun_ofport.endswith('\n'):
 			tun_ofport = tun_ofport[:-1]
 		# add flow entryies for dropping broadcast coming in from gre tunnel
-		add_flow(bridge, priority=1000, in_port=tun_ofport,
-				dl_dst='ff:ff:ff:ff:ff:ff', actions='drop')
-		add_flow(bridge, priority=1000, in_port=tun_ofport,
-				nw_dst='224.0.0.0/24', actions='drop')
+		pluginlib.add_flow(bridge, priority=1000, in_port=tun_ofport,
+				           dl_dst='ff:ff:ff:ff:ff:ff', actions='drop')
+		pluginlib.add_flow(bridge, priority=1000, in_port=tun_ofport,
+				           nw_dst='224.0.0.0/24', actions='drop')
 		drop_flow_setup = True
 		pr("Broadcast drop rules added")
 		# add flow entry for allowing broadcast to reach ports already configured on OVS bridge
@@ -331,12 +332,16 @@ def create_tunnel(session, args):
 					   'param-name=software-version', 'param-key=product_version']
 		version = do_cmd(version_cmd)
 		vif_ofports = vif_ofport_list_handlers[version[0]](xs_nw_uuid)
-		if len(vif_ofports) > 0:
-			action = "".join("output:%s," %ofport for ofport in vif_ofports)[:-1]
-			add_flow(bridge, priority=1100, in_port=tun_ofport,
-					dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
-			add_flow(bridge, priority=1100, in_port=tun_ofport,
-					nw_dst='224.0.0.0/24', actions=action)
+		for vif_ofport in vif_ofports:
+			# No need for specifying input port
+			# just allow broadcasts on VIF ports
+			# Use a distinct priority for each port
+			# this will make flow removal easier
+			action = "output:%s " % vif_ofport
+			pluginlib.add_flow(bridge, priority=1100 + int(vif_ofport),
+					           dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
+			pluginlib.add_flow(bridge, priority=1100 + int(vif_ofport),
+					           nw_dst='224.0.0.0/24', actions=action)
 		return "SUCCESS:%s" % name
 	except:
 		pr("An unexpected error occured. Rolling back")
@@ -347,7 +352,7 @@ def create_tunnel(session, args):
 		if drop_flow_setup:
 			# Delete flows
 			pr("Deleting flow entries from GRE interface")
-			del_flows(bridge, tun_ofport)
+			pluginlib.del_flows(bridge, in_port=tun_ofport)
 		raise
 
 
@@ -356,13 +361,7 @@ def del_all_flows(bridge):
 	do_cmd(delFlow)
 
 	normalFlow = "priority=0 idle_timeout=0 hard_timeout=0 actions=normal"
-	add_flow(bridge, normalFlow)
-
-
-def del_flows(bridge, ofport):
-	""" removes flows configured for a specific of ports """
-	delFlow = [ofctlPath, 'del-flows', bridge, 'in_port=%s' % ofport]
-	do_cmd(delFlow)
+	pluginlib.add_flow(bridge, normalFlow)
 
 
 def del_port(bridge, port):
@@ -385,7 +384,7 @@ def destroy_tunnel(session, args):
 		del_all_flows(bridge)
 	else:
 		ofport = get_field_of_interface(inPort, "ofport")
-		del_flows(bridge, ofport)
+		pluginlib.del_flows(bridge, in_port=ofport)
 		del_port(bridge, inPort)
 
 	return "SUCCESS"
@@ -400,28 +399,6 @@ def get_field_of_interface(nameOruuid, field):
 			(x, r) = i.split(":")
 			return r.lstrip().rstrip()
 	return None
-
-
-def add_flow(bridge, **kwargs):
-	"""
-	Builds a flow expression for **kwargs and adds the flow entry
-	to an Open vSwitch instance
-	"""
-	flow = "hard_timeout=%s,idle_timeout=%s,priority=%s"\
-			% (kwargs.get('hard_timeout','0'),
-			   kwargs.get('idle_timeout','0'),
-			   kwargs.get('priority','1'))
-	in_port = 'in_port' in kwargs and ",in_port=%s" % kwargs['in_port'] or ''
-	dl_src = 'dl_src' in kwargs and ",dl_src=%s" % kwargs['dl_src'] or ''
-	dl_dst = 'dl_dst' in kwargs and ",dl_dst=%s" % kwargs['dl_dst'] or ''
-	nw_src = 'nw_src' in kwargs and ",nw_src=%s" % kwargs['nw_src'] or ''
-	nw_dst = 'nw_dst' in kwargs and ",nw_dst=%s" % kwargs['nw_dst'] or ''
-	ip = ('nw_src' in kwargs or 'nw_dst' in kwargs) and ',ip' or ''
-	actions = 'actions' in kwargs and ",actions=%s" % kwargs['actions'] or ''
-	flow = flow + in_port + dl_src + dl_dst + ip + nw_src + nw_dst + actions
-	pr("Flow to add:%s" %flow)
-	addflow = ["ovs-ofctl", "add-flow", bridge, flow]
-	do_cmd(addflow)
 
 
 if __name__ == "__main__":
