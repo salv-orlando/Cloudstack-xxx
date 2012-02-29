@@ -5,21 +5,20 @@
 
 import os
 import sys
-sys.path.append("/opt/xensource/sm/")
-import util
 
 import cloudstack_pluginlib as pluginlib
 
 
 def clear_flows(bridge, vif_ofport):
+    # Leverage out_port option for removing flows based on actions
     pluginlib.del_flows(bridge, out_port=vif_ofport)
 
 
 def apply_flows(bridge, vif_ofport):
     action = "output:%s," % vif_ofport
-    pluginlib.add_flow(bridge, priority=1100 + int(vif_ofport),
+    pluginlib.add_flow(bridge, priority=1100,
                        dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
-    pluginlib.add_flow(bridge, priority=1100 + int(vif_ofport),
+    pluginlib.add_flow(bridge, priority=1100,
                        nw_dst='224.0.0.0/24', actions=action)
 
 
@@ -49,9 +48,6 @@ def main(command, vif_raw):
 
 
 if __name__ == "__main__":
-    util.SMlog("#### CICCIO  %s ####" %sys.argv[0] )
-    util.SMlog("#### PIPPO  %s ####" %sys.argv[1] )
-    util.SMlog("#### LUPPO  %s ####" %sys.argv[2] )
     if len(sys.argv) != 3:
         print "usage: %s [online|offline] vif-domid-idx" % \
                os.path.basename(sys.argv[0])

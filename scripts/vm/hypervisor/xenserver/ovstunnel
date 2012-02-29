@@ -213,18 +213,20 @@ def is_uuid (uuid):
 def setup_ovs_bridge(session, args):
 	bridge = args.pop("bridge")
 	key = args.pop("key")
+	xs_nw_uuid = args.pop("xs_nw_uuid")
 	
 	res = check_switch()
 	if res != "SUCCESS":
 		return "FAILURE:%s" %res
 
-	pr("About to manually create the following bridge:%s" %bridge)
+	pr("About to manually create the bridge:%s" %bridge)
 	# create a bridge with the same name as the xapi network
 	# also associate gre key in other config attribute
 	res = do_cmd([vsctlPath, "--", "--may-exist", "add-br", bridge, "--", "set",
 				  "bridge", bridge, "other_config:gre_key=%s" % key])
 	pr("Bridge has been manually created:%s" %res)
 	# TODO: Make sure xs-network-uuid is set into external_ids
+	do_cmd([vsctlPath,"set","Bridge",bridge,"external_ids:xs-network-uuid%s" % xs_new_uuid])
 	# Non empty result means something went wrong
 	if res:
 		result = "FAILURE:%s" %res
@@ -237,12 +239,13 @@ def setup_ovs_bridge(session, args):
 			result = "FAILURE:%s" %res
 	pr("Setup_ovs_bridge complete with result:%s" %result)
 	return result
-	
+
+
 @echo
 def destroy_ovs_bridge(session, args):#
 	bridge = args.pop("bridge")
-
 	res = check_switch()
+	# TODO: Must complete this routine
 	if res != "SUCCESS":
 		return res
 
@@ -332,16 +335,12 @@ def create_tunnel(session, args):
 					   'param-name=software-version', 'param-key=product_version']
 		version = do_cmd(version_cmd)
 		vif_ofports = vif_ofport_list_handlers[version[0]](xs_nw_uuid)
-		for vif_ofport in vif_ofports:
-			# No need for specifying input port
-			# just allow broadcasts on VIF ports
-			# Use a distinct priority for each port
-			# this will make flow removal easier
-			action = "output:%s " % vif_ofport
-			pluginlib.add_flow(bridge, priority=1100 + int(vif_ofport),
-					           dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
-			pluginlib.add_flow(bridge, priority=1100 + int(vif_ofport),
-					           nw_dst='224.0.0.0/24', actions=action)
+		if len(vif_ofports) > 0:
+			action = "".join("output:%s," %ofport for ofport in vif_ofports)[:-1]
+			pluginlib.add_flow(bridge, priority=1100, in_port=tun_ofport,
+					dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
+			pluginlib.add_flow(bridge, priority=1100, in_port=tun_ofport,
+					nw_dst='224.0.0.0/24', actions=action)
 		return "SUCCESS:%s" % name
 	except:
 		pr("An unexpected error occured. Rolling back")
