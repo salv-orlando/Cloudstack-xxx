@@ -14,6 +14,10 @@ DEFAULT_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_LOG_FILE = "/var/log/cloudstack_plugins.log"
 
 PLUGIN_CONFIG_PATH='/etc/xensource/cloudstack_plugins.conf'
+OVSDB_PID_PATH = "/var/run/openvswitch/ovsdb-server.pid"
+OVSDB_DAEMON_PATH = "ovsdb-server"
+OVS_PID_PATH = "/var/run/openvswitch/ovs-vswitchd.pid"
+OVS_DAEMON_PATH = "ovs-vswitchd"
 VSCTL_PATH='/usr/bin/ovs-vsctl'
 OFCTL_PATH='/usr/bin/ovs-ofctl'
 
@@ -61,14 +65,6 @@ def setup_logging(log_file=None):
     root_logger.addHandler(logfile_handler)
 
 
-def pr (str):
-    global fLog
-
-    if fLog != None:
-        str = "[%s]:" % _asctime (_localtime()) + str + "\n"
-        fLog.write (str)
-
-
 def do_cmd(cmd):
     """Abstracts out the basics of issuing system commands. If the command
     returns anything in stderr, a PluginError is raised with that information.
@@ -76,16 +72,65 @@ def do_cmd(cmd):
     """
 
     pipe = subprocess.PIPE
+    logging.debug("Executing:%s", cmd)
     proc = subprocess.Popen(cmd, shell=False, stdin=pipe, stdout=pipe,
                             stderr=pipe, close_fds=True)
     ret_code = proc.wait()
     err = proc.stderr.read()
     if ret_code:
+        logging.debug("The command exited with the error code: " +
+                      "%s (stderr output:%s)" % (ret_code, err))
         raise PluginError(err)
     output = proc.stdout.read()
     if output.endswith('\n'):
         output = output[:-1]
     return output
+
+
+def _is_process_run (pidFile, name):
+    try:
+        fpid = open (pidFile, "r")
+        pid = fpid.readline ()
+        fpid.close ()
+    except IOError, e:
+        return -1
+
+    pid = pid[:-1]
+    ps = os.popen ("ps -ae")
+    for l in ps:
+        if pid in l and name in l:
+            ps.close ()
+            return 0
+
+    ps.close ()
+    return -2
+
+def _is_tool_exist (name):
+    if os.path.exists(name):
+        return 0
+    return -1
+
+
+def check_switch ():
+    global result
+
+    ret = _is_process_run (OVSDB_PID_PATH, OVSDB_DAEMON_PATH)
+    if ret < 0:
+        if ret == -1: return "NO_DB_PID_FILE"
+        if ret == -2: return "DB_NOT_RUN"
+
+    ret = _is_process_run (OVS_PID_PATH, OVS_DAEMON_PATH)
+    if ret < 0:
+        if ret == -1: return "NO_SWITCH_PID_FILE"
+        if ret == -2: return "SWITCH_NOT_RUN"
+
+    if _is_tool_exist (VSCTL_PATH) < 0:
+        return "NO_VSCTL"
+
+    if _is_tool_exist (OFCTL_PATH) < 0:
+        return "NO_OFCTL"
+
+    return "SUCCESS"
 
 
 def _build_flow_expr(**kwargs):
@@ -125,3 +170,16 @@ def del_flows(bridge, **kwargs):
     flow = flow + out_port
     delFlow = [OFCTL_PATH, 'del-flows', bridge, flow]
     do_cmd(delFlow)
+    
+    
+def del_all_flows(bridge):
+    delFlow = [OFCTL_PATH, "del-flows", bridge]
+    do_cmd(delFlow)
+
+    normalFlow = "priority=0 idle_timeout=0 hard_timeout=0 actions=normal"
+    add_flow(bridge, normalFlow)
+
+
+def del_port(bridge, port):
+    delPort = [VSCTL_PATH, "del-port", bridge, port]
+    do_cmd(delPort)
