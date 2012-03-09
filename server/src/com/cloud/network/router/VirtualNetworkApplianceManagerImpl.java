@@ -465,7 +465,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             if (sendPassword) {
                 Commands cmds = new Commands(OnError.Continue);
                 SavePasswordCommand cmd = new SavePasswordCommand(encodedPassword, nic.getIp4Address(), userVm.getHostName());
-                cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+                cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
                 cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
                 DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
                 cmd.setAccessDetail(NetworkElementCommand.ZONE_NETWORK_TYPE, dcVo.getNetworkType().toString());
@@ -744,7 +744,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             String vmInstanceName, long vmId, String publicKey) {
         VmDataCommand cmd = new VmDataCommand(vmPrivateIpAddress, vmName);
 
-        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
 
@@ -806,7 +806,12 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                             s_logger.warn("Error while collecting network stats from router: "+router.getInstanceName()+" from host: "+router.getHostId(), e);
                             continue;
                         }
+                        
                         if (answer != null) {
+                            if (!answer.getResult()) {
+                                s_logger.warn("Error while collecting network stats from router: "+router.getInstanceName()+" from host: "+router.getHostId() + "; details: " + answer.getDetails());
+                                continue;
+                            }
                             Transaction txn = Transaction.open(Transaction.CLOUD_DB);
                             try {
                                 if ((answer.getBytesReceived() == 0) && (answer.getBytesSent() == 0)) {
@@ -937,7 +942,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     continue;
                 } else if (privateIP != null) {
                     final CheckRouterCommand command = new CheckRouterCommand();
-                    command.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+                    command.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
                     command.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
                     command.setWait(60);
                     final Answer origAnswer = _agentMgr.easySend(router.getHostId(), command);
@@ -1443,7 +1448,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                             + ", but there are already two redundant routers with IP " + router.getPublicIpAddress()
                             + ", they are " + rrouter.getInstanceName() + "(" + rrouter.getId() + ") and "
                             + routerToBeAvoid.getInstanceName() + "(" + routerToBeAvoid.getId() + ")",
-                            this.getClass(), 0);
+                            DataCenter.class, rrouter.getDataCenterIdToDeployIn());
                 }
                 routerToBeAvoid = rrouter;
             }
@@ -1772,7 +1777,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
 
         // Update router template/scripts version
         final GetDomRVersionCmd command = new GetDomRVersionCmd();
-        command.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        command.setAccessDetail(NetworkElementCommand.ROUTER_IP, controlNic.getIp4Address());
         command.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
         cmds.addCommand("getDomRVersion", command);
 
@@ -2033,7 +2038,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                 IpAddress ip = _networkMgr.getIp(vpn.getServerAddressId());
 
                 RemoteAccessVpnCfgCommand removeVpnCmd = new RemoteAccessVpnCfgCommand(false, ip.getAddress().addr(), vpn.getLocalIp(), vpn.getIpRange(), vpn.getIpsecPresharedKey());
-                removeVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+                removeVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
                 removeVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
                 removeVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
 
@@ -2079,7 +2084,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             throw new CloudRuntimeException("Unable to stop " + router, e);
         }
     }
-
+    
     @Override
     public List<VirtualRouter> applyDhcpEntry(Network network, NicProfile nic, VirtualMachineProfile<UserVm> profile, DeployDestination dest, ReservationContext context, List<DomainRouterVO> routers)
             throws ConcurrentOperationException, InsufficientCapacityException, ResourceUnavailableException {
@@ -2095,6 +2100,16 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         List<VirtualRouter> connectedRouters = new ArrayList<VirtualRouter>();
         List<VirtualRouter> disconnectedRouters = new ArrayList<VirtualRouter>();
 
+        Long podId = null;
+        if (isZoneBasic) {
+            podId = dest.getPod().getId();
+        }
+        boolean podLevelException = false;
+        //for user vm in Basic zone we should try to re-deploy vm in a diff pod if it fails to deploy in original pod; so throwing exception with Pod scope
+        if (isZoneBasic && podId != null && profile.getVirtualMachine().getType() == VirtualMachine.Type.User && network.getTrafficType() == TrafficType.Guest && network.getGuestType() == Network.GuestType.Shared) {
+            podLevelException = true;
+        }
+        
         for (DomainRouterVO router : routers) { 
             boolean sendDnsDhcpData = true;
 
@@ -2105,8 +2120,9 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
 
             if (router.isStopPending()) {
                 if (_hostDao.findById(router.getHostId()).getStatus() == Status.Up) {
+                    //Stop pending only happened with 
                     throw new ResourceUnavailableException("Unable to process due to the stop pending router " + router.getInstanceName() + " haven't been stopped after it's host coming back!",
-                            VirtualRouter.class, router.getId());
+                            DataCenter.class, router.getDataCenterIdToDeployIn());
                 }
                 s_logger.warn("Unable to add virtual machine " + profile.getVirtualMachine() + " to the router " + router + " as the router is to be stopped");
                 continue;
@@ -2115,9 +2131,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             //for basic zone: 
             //1) send vm data/password information only to the dhcp in the same pod
             //2) send dhcp/dns information to all routers in the cloudstack only when _dnsBasicZoneUpdates is set to "all" value
-            Long podId = null;
             if (isZoneBasic) {
-                podId = dest.getPod().getId();
                 if (router.getPodIdToDeployIn().longValue() != podId.longValue()) {
                     if (_dnsBasicZoneUpdates.equalsIgnoreCase("pod")) {
                         sendDnsDhcpData = false;
@@ -2142,7 +2156,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             	dhcpCommand.setDefaultRouter(findGatewayIp(profile.getVirtualMachine().getId()));
             	dhcpCommand.setDefaultDns(findDefaultDnsIp(profile.getVirtualMachine().getId()));
                 
-                dhcpCommand.setAccessDetail(NetworkElementCommand.ROUTER_IP, routerControlIpAddress);
+                dhcpCommand.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
                 dhcpCommand.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
                 dhcpCommand.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
 
@@ -2152,11 +2166,6 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             }
 
             if (cmds.size() > 0) {
-                boolean podLevelException = false;
-                //for user vm in Basic zone we should try to re-deploy vm in a diff pod if it fails to deploy in original pod; so throwing exception with Pod scope
-                if (isZoneBasic && podId != null && profile.getVirtualMachine().getType() == VirtualMachine.Type.User && network.getTrafficType() == TrafficType.Guest && network.getGuestType() == Network.GuestType.Shared) {
-                    podLevelException = true;
-                }
                 try {
                     _agentMgr.send(router.getHostId(), cmds);
                 } catch (AgentUnavailableException e){
@@ -2176,7 +2185,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     if (podLevelException) {
                         throw new ResourceUnavailableException("Unable to set dhcp entry for " + profile + " due to " + answer.getDetails(), Pod.class, podId);
                     }
-                    throw new ResourceUnavailableException("Unable to set dhcp entry for " + profile + " due to " + answer.getDetails(), DataCenter.class, router.getDataCenterIdToDeployIn());
+                    throw new ResourceUnavailableException("Unable to set dhcp entry for " + profile + " due to " + answer.getDetails(), DataCenter.class, dc.getId());
                 }
             }
 
@@ -2186,14 +2195,19 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         String msg = "Unable to apply dhcp entry for new VM into network on disconnected router ";
         if (!connectedRouters.isEmpty()) {
             // These disconnected ones are out of sync now, stop them for synchronization
-            handleSingleWorkingRedundantRouter(connectedRouters, disconnectedRouters, msg);
+            if (!isZoneBasic) {
+                handleSingleWorkingRedundantRouter(connectedRouters, disconnectedRouters, msg);
+            }
         } else if (!disconnectedRouters.isEmpty()) {
             for (VirtualRouter router : disconnectedRouters) {
                 if (s_logger.isDebugEnabled()) {
                     s_logger.debug(msg + router.getInstanceName() + "(" + router.getId() + ")");
                 }
             }
-            throw new ResourceUnavailableException(msg, VirtualRouter.class, disconnectedRouters.get(0).getId());
+            if (podLevelException) {
+                throw new ResourceUnavailableException(msg, Pod.class, podId);
+            } 
+            throw new ResourceUnavailableException(msg, DataCenter.class, dc.getId());
         }
 
         return rets;
@@ -2237,6 +2251,16 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         List<VirtualRouter> connectedRouters = new ArrayList<VirtualRouter>();
         List<VirtualRouter> disconnectedRouters = new ArrayList<VirtualRouter>();
 
+        Long podId = null;
+        if (isZoneBasic) {
+            podId = dest.getPod().getId();
+        }
+        boolean podLevelException = false;
+        //for user vm in Basic zone we should try to re-deploy vm in a diff pod if it fails to deploy in original pod; so throwing exception with Pod scope
+        if (isZoneBasic && podId != null && profile.getVirtualMachine().getType() == VirtualMachine.Type.User && network.getTrafficType() == TrafficType.Guest && network.getGuestType() == Network.GuestType.Shared) {
+            podLevelException = true;
+        }
+        
         for (DomainRouterVO router : routers) { 
             boolean sendPasswordAndVmData = true;
 
@@ -2247,8 +2271,9 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
 
             if (router.isStopPending()) {
                 if (_hostDao.findById(router.getHostId()).getStatus() == Status.Up) {
+                    // Stop pending flag only used for advanced network
                     throw new ResourceUnavailableException("Unable to process due to the stop pending router " + router.getInstanceName() + " haven't been stopped after it's host coming back!",
-                            VirtualRouter.class, router.getId());
+                            DataCenter.class, router.getDataCenterIdToDeployIn());
                 }
                 s_logger.warn("Unable to add virtual machine " + profile.getVirtualMachine() + " to the router " + router + " as the router is to be stopped");
                 continue;
@@ -2257,9 +2282,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             //for basic zone: 
             //1) send vm data/password information only to the dhcp in the same pod
             //2) send dhcp/dns information to all routers in the cloudstack only when _dnsBasicZoneUpdates is set to "all" value
-            Long podId = null;
             if (isZoneBasic) {
-                podId = dest.getPod().getId();
                 if (router.getPodIdToDeployIn().longValue() != podId.longValue()) {
                     sendPasswordAndVmData = false;
                 }
@@ -2276,7 +2299,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                 if (password != null && nic.isDefaultNic()) {
                     final String encodedPassword = PasswordGenerator.rot13(password);
                     SavePasswordCommand cmd = new SavePasswordCommand(encodedPassword, nic.getIp4Address(), profile.getVirtualMachine().getHostName());
-                    cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+                    cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
                     cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
                     cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
                     cmd.setAccessDetail(NetworkElementCommand.ZONE_NETWORK_TYPE, dc.getNetworkType().toString());
@@ -2291,11 +2314,6 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             }
 
             if (cmds.size() > 0) {
-                boolean podLevelException = false;
-                //for user vm in Basic zone we should try to re-deploy vm in a diff pod if it fails to deploy in original pod; so throwing exception with Pod scope
-                if (isZoneBasic && podId != null && profile.getVirtualMachine().getType() == VirtualMachine.Type.User && network.getTrafficType() == TrafficType.Guest && network.getGuestType() == Network.GuestType.Shared) {
-                    podLevelException = true;
-                }
                 try {
                     _agentMgr.send(router.getHostId(), cmds);
                 } catch (AgentUnavailableException e){
@@ -2315,7 +2333,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     if (podLevelException) {
                         throw new ResourceUnavailableException("Unable to set password due to " + answer.getDetails(), Pod.class, podId);
                     }
-                    throw new ResourceUnavailableException("Unable to set password due to " + answer.getDetails(), DataCenter.class, router.getDataCenterIdToDeployIn());
+                    throw new ResourceUnavailableException("Unable to set password due to " + answer.getDetails(), DataCenter.class, dc.getId());
                 }
 
                 answer = cmds.getAnswer("vmdata");
@@ -2324,7 +2342,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     if (podLevelException) {
                         throw new ResourceUnavailableException("Unable to set VM data due to " + answer.getDetails(), Pod.class, podId);
                     }
-                    throw new ResourceUnavailableException("Unable to set VM data due to " + answer.getDetails(), DataCenter.class, router.getDataCenterIdToDeployIn());
+                    throw new ResourceUnavailableException("Unable to set VM data due to " + answer.getDetails(), DataCenter.class, dc.getId());
                 }
             }
 
@@ -2334,14 +2352,19 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         String msg = "Unable to apply userdata for new VM into network on disconnected router ";
         if (!connectedRouters.isEmpty()) {
             // These disconnected ones are out of sync now, stop them for synchronization
-            handleSingleWorkingRedundantRouter(connectedRouters, disconnectedRouters, msg);
+            if (!isZoneBasic) {
+                handleSingleWorkingRedundantRouter(connectedRouters, disconnectedRouters, msg);
+            }
         } else if (!disconnectedRouters.isEmpty()) {
             for (VirtualRouter router : disconnectedRouters) {
                 if (s_logger.isDebugEnabled()) {
                     s_logger.debug(msg + router.getInstanceName() + "(" + router.getId() + ")");
                 }
             }
-            throw new ResourceUnavailableException(msg, VirtualRouter.class, disconnectedRouters.get(0).getId());
+            if (podLevelException) {
+                throw new ResourceUnavailableException(msg, Pod.class, podId);
+            } 
+            throw new ResourceUnavailableException(msg, DataCenter.class, dc.getId());
         }
 
         return rets;
@@ -2382,7 +2405,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             VpnUsersCfgCommand cmd = new VpnUsersCfgCommand(addUsers, removeUsers);
             cmd.setAccessDetail(NetworkElementCommand.ACCOUNT_ID, String.valueOf(router.getAccountId()));
             cmd.setAccessDetail(NetworkElementCommand.GUEST_NETWORK_CIDR, network.getCidr());
-            cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+            cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
             cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
             cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
             DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -2535,7 +2558,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                 }
             }
             IpAssocCommand cmd = new IpAssocCommand(ipsToSend);
-            cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+            cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
             cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
             cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
             DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -2557,7 +2580,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         }
 
         SetPortForwardingRulesCommand cmd = new SetPortForwardingRulesCommand(rulesTO);
-        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
         DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -2578,7 +2601,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         }
 
         SetStaticNatRulesCommand cmd = new SetStaticNatRulesCommand(rulesTO);
-        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
         DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -2617,7 +2640,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         cmd.lbStatsPort = _configDao.getValue(Config.NetworkLBHaproxyStatsPort.key());
 
 
-        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
         DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -2639,14 +2662,14 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         }
 
         VpnUsersCfgCommand addUsersCmd = new VpnUsersCfgCommand(addUsers, removeUsers);
-        addUsersCmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        addUsersCmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         addUsersCmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         addUsersCmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
 
         IpAddress ip = _networkMgr.getIp(vpn.getServerAddressId());
 
         RemoteAccessVpnCfgCommand startVpnCmd = new RemoteAccessVpnCfgCommand(true, ip.getAddress().addr(), vpn.getLocalIp(), vpn.getIpRange(), vpn.getIpsecPresharedKey());
-        startVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        startVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         startVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         startVpnCmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
         DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -2697,7 +2720,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     dhcpCommand.setDefaultRouter(findGatewayIp(vm.getId()));
                     dhcpCommand.setDefaultRouter(findDefaultDnsIp(vm.getId()));
                     
-                    dhcpCommand.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+                    dhcpCommand.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
                     dhcpCommand.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
                     DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
                     dhcpCommand.setAccessDetail(NetworkElementCommand.ZONE_NETWORK_TYPE, dcVo.getNetworkType().toString());
@@ -2768,7 +2791,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
             //connRouterPR < disconnRouterPR, they won't equal at anytime
             if (!connectedRouter.getIsPriorityBumpUp()) {
                 final BumpUpPriorityCommand command = new BumpUpPriorityCommand();
-                command.setAccessDetail(NetworkElementCommand.ROUTER_IP, connectedRouter.getPrivateIpAddress());
+                command.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(connectedRouter.getId()));
                 command.setAccessDetail(NetworkElementCommand.ROUTER_NAME, connectedRouter.getInstanceName());
                 final Answer answer = _agentMgr.easySend(connectedRouter.getHostId(), command);
                 if (!answer.getResult()) {
@@ -2795,11 +2818,10 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         String msg = "Unable to associate ip addresses on disconnected router ";
         for (VirtualRouter router : routers) {
             if (router.getState() == State.Running) {
-
                 if (router.isStopPending()) {
                     if (_hostDao.findById(router.getHostId()).getStatus() == Status.Up) {
                         throw new ResourceUnavailableException("Unable to process due to the stop pending router " + router.getInstanceName() + " haven't been stopped after it's host coming back!",
-                                VirtualRouter.class, router.getId());
+                                DataCenter.class, router.getDataCenterIdToDeployIn());
                     }
                     s_logger.debug("Router " + router.getInstanceName() + " is stop pending, so not sending apply firewall rules commands to the backend");
                     continue;
@@ -2818,7 +2840,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
 
                 //If ip fails to apply on one domR, no need to proceed with the rest
                 if (!result) {
-                    throw new ResourceUnavailableException("Unable to associate ip addresses on router ", VirtualRouter.class, router.getId());
+                    throw new ResourceUnavailableException("Unable to associate ip addresses on router ", DataCenter.class, router.getDataCenterIdToDeployIn());
                 }
 
             } else if (router.getState() == State.Stopped || router.getState() == State.Stopping) {
@@ -2839,7 +2861,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     s_logger.debug(msg + router.getInstanceName() + "(" + router.getId() + ")");
                 }
             }
-            throw new ResourceUnavailableException(msg, VirtualRouter.class, disconnectedRouters.get(0).getId());
+            throw new ResourceUnavailableException(msg, DataCenter.class, disconnectedRouters.get(0).getDataCenterIdToDeployIn());
         }
         return result;
     }
@@ -2860,7 +2882,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                 if (router.isStopPending()) {
                     if (_hostDao.findById(router.getHostId()).getStatus() == Status.Up) {
                         throw new ResourceUnavailableException("Unable to process due to the stop pending router " + router.getInstanceName() + " haven't been stopped after it's host coming back!",
-                                VirtualRouter.class, router.getId());
+                                DataCenter.class, router.getDataCenterIdToDeployIn());
                     }
                     s_logger.debug("Router " + router.getInstanceName() + " is stop pending, so not sending apply firewall rules commands to the backend");
                     continue;
@@ -2898,14 +2920,14 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
 
                 //If rules fail to apply on one domR and not due to disconnection, no need to proceed with the rest
                 if (!result) {
-                    throw new ResourceUnavailableException("Unable to apply firewall rules on router ", VirtualRouter.class, router.getId());
+                    throw new ResourceUnavailableException("Unable to apply firewall rules on router ", DataCenter.class, router.getDataCenterIdToDeployIn());
                 }
             } else if (router.getState() == State.Stopped || router.getState() == State.Stopping) {
                 s_logger.debug("Router " + router.getInstanceName() + " is in " + router.getState() +
                         ", so not sending apply firewall rules commands to the backend");
             } else {
                 s_logger.warn("Unable to apply firewall rules, virtual router is not in the right state " + router.getState());
-                throw new ResourceUnavailableException("Unable to apply firewall rules, virtual router is not in the right state", VirtualRouter.class, router.getId());
+                throw new ResourceUnavailableException("Unable to apply firewall rules, virtual router is not in the right state", DataCenter.class, router.getDataCenterIdToDeployIn());
             }
         }
 
@@ -2918,7 +2940,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     s_logger.debug(msg + router.getInstanceName() + "(" + router.getId() + ")");
                 }
             }
-            throw new ResourceUnavailableException(msg, VirtualRouter.class, disconnectedRouters.get(0).getId());
+            throw new ResourceUnavailableException(msg, DataCenter.class, disconnectedRouters.get(0).getDataCenterIdToDeployIn());
         }
 
         return true;
@@ -2967,7 +2989,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         }
 
         SetFirewallRulesCommand cmd = new SetFirewallRulesCommand(rulesTO);
-        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
         DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -3007,7 +3029,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                 if (router.isStopPending()) {
                     if (_hostDao.findById(router.getHostId()).getStatus() == Status.Up) {
                         throw new ResourceUnavailableException("Unable to process due to the stop pending router " + router.getInstanceName() + " haven't been stopped after it's host coming back!",
-                                VirtualRouter.class, router.getId());
+                                DataCenter.class, router.getDataCenterIdToDeployIn());
                     }
                     s_logger.debug("Router " + router.getInstanceName() + " is stop pending, so not sending apply firewall rules commands to the backend");
                     continue;
@@ -3022,14 +3044,14 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
 
                 //If rules fail to apply on one domR and not due to disconnection, no need to proceed with the rest
                 if (!result) {
-                    throw new ResourceUnavailableException("Unable to apply static nat on router ", VirtualRouter.class, router.getId());
+                    throw new ResourceUnavailableException("Unable to apply static nat on router ", DataCenter.class, router.getDataCenterIdToDeployIn());
                 }
 
             } else if (router.getState() == State.Stopped || router.getState() == State.Stopping) {
                 s_logger.debug("Router " + router.getInstanceName() + " is in " + router.getState() + ", so not sending apply static nat commands to the backend");
             } else {
                 s_logger.warn("Unable to apply static nat, virtual router is not in the right state " + router.getState());
-                throw new ResourceUnavailableException("Unable to apply static nat, virtual router is not in the right state", VirtualRouter.class, router.getId());
+                throw new ResourceUnavailableException("Unable to apply static nat, virtual router is not in the right state", DataCenter.class, router.getDataCenterIdToDeployIn());
             }
         }
 
@@ -3042,7 +3064,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
                     s_logger.debug(msg + router.getInstanceName() + "(" + router.getId() + ")");
                 }
             }
-            throw new ResourceUnavailableException(msg, VirtualRouter.class, disconnectedRouters.get(0).getId());
+            throw new ResourceUnavailableException(msg, DataCenter.class, disconnectedRouters.get(0).getDataCenterIdToDeployIn());
         }
 
         return true;
@@ -3068,7 +3090,7 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         }
 
         SetStaticNatRulesCommand cmd = new SetStaticNatRulesCommand(rulesTO);
-        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, router.getPrivateIpAddress());
+        cmd.setAccessDetail(NetworkElementCommand.ROUTER_IP, getRouterControlIp(router.getId()));
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_GUEST_IP, router.getGuestIpAddress());
         cmd.setAccessDetail(NetworkElementCommand.ROUTER_NAME, router.getInstanceName());
         DataCenterVO dcVo = _dcDao.findById(router.getDataCenterIdToDeployIn());
@@ -3144,4 +3166,22 @@ public class VirtualNetworkApplianceManagerImpl implements VirtualNetworkApplian
         return 0;
     }
 
+    private String getRouterControlIp(long routerId) {
+        String routerControlIpAddress = null;
+        List<NicVO> nics = _nicDao.listByVmId(routerId);
+        for (NicVO n : nics) {
+            NetworkVO nc = _networkDao.findById(n.getNetworkId());
+            if (nc.getTrafficType() == TrafficType.Control) {
+                routerControlIpAddress = n.getIp4Address();
+            }
+        }
+        
+        if(routerControlIpAddress == null) {
+            s_logger.warn("Unable to find router's control ip in its attached NICs!. routerId: " + routerId);
+            DomainRouterVO router = _routerDao.findById(routerId);
+            return router.getPrivateIpAddress();
+        }
+            
+        return routerControlIpAddress;
+    }
 }

@@ -49,3 +49,16 @@ UPDATE `cloud`.`networks` SET guest_type=(SELECT guest_type FROM network_offerin
 UPDATE `cloud`.`networks` SET guru_name='ExternalGuestNetworkGuru' where guest_type='Isolated';
 
 DELETE FROM `cloud`.`configuration` WHERE name='use.user.concentrated.pod.allocation';
+
+UPDATE `cloud`.`domain_router` SET role='VIRTUAL_ROUTER' WHERE role = 'DHCP_FIREWALL_LB_PASSWD_USERDATA' or role = 'DHCP_USERDATA';
+ALTER TABLE `cloud`.`domain_router` ADD CONSTRAINT `fk_domain_router__element_id` FOREIGN KEY `fk_domain_router__element_id`(`element_id`) REFERENCES `virtual_router_providers`(`id`);
+ALTER TABLE `cloud`.`vlan` ADD CONSTRAINT `fk_vlan__physical_network_id` FOREIGN KEY (`physical_network_id`) REFERENCES `physical_network`(`id`);
+ALTER TABLE `cloud`.`op_dc_vnet_alloc` ADD CONSTRAINT `fk_op_dc_vnet_alloc__physical_network_id` FOREIGN KEY (`physical_network_id`) REFERENCES `physical_network`(`id`) ON DELETE CASCADE;
+ALTER TABLE `cloud`.`user_ip_address` ADD CONSTRAINT `fk_user_ip_address__physical_network_id` FOREIGN KEY (`physical_network_id`) REFERENCES `physical_network`(`id`) ON DELETE CASCADE;
+
+ALTER TABLE `cloud`.`volumes` ADD INDEX `i_volumes__last_pool_id`(`last_pool_id`);
+ALTER TABLE `cloud`.`swift` MODIFY `account` varchar(255) NOT NULL;
+ALTER TABLE `cloud`.`swift` MODIFY `username` varchar(255) NOT NULL;
+
+DROP TABLE IF EXISTS `cloud`.`network_tags`;
+DROP TABLE IF EXISTS `cloud_usage`.`event`;

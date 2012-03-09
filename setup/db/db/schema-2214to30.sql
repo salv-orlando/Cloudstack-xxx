@@ -13,9 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
---;
--- Schema upgrade from 2.2.14 to 3.0;
---;
+
+
+#Schema upgrade from 2.2.14 to 3.0;
 
 ALTER TABLE `cloud`.`host` ADD COLUMN `hypervisor_version` varchar(32) COMMENT 'hypervisor version' AFTER hypervisor_type;
 
@@ -75,6 +75,7 @@ CREATE TABLE  `cloud`.`project_account` (
 
 CREATE TABLE  `cloud`.`project_invitations` (
   `id` bigint unsigned NOT NULL auto_increment,
+  `uuid` varchar(40),
   `project_id` bigint unsigned NOT NULL COMMENT 'project id',
   `account_id` bigint unsigned COMMENT 'account id',
   `domain_id` bigint unsigned COMMENT 'domain id',
@@ -85,7 +86,11 @@ CREATE TABLE  `cloud`.`project_invitations` (
   PRIMARY KEY (`id`),
   CONSTRAINT `fk_project_invitations__account_id` FOREIGN KEY(`account_id`) REFERENCES `account`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_project_invitations__domain_id` FOREIGN KEY(`domain_id`) REFERENCES `domain`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_project_invitations__project_id` FOREIGN KEY(`project_id`) REFERENCES `projects`(`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_project_invitations__project_id` FOREIGN KEY(`project_id`) REFERENCES `projects`(`id`) ON DELETE CASCADE,
+  UNIQUE (`project_id`, `account_id`),
+  UNIQUE (`project_id`, `email`),
+  UNIQUE (`project_id`, `token`),
+  CONSTRAINT `uc_project_invitations__uuid` UNIQUE (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
@@ -161,8 +166,8 @@ INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Network', 'DEFAULT', 'manage
 
 update `cloud`.`configuration` set name = 'cluster.storage.allocated.capacity.notificationthreshold' , category = 'Alert' where name = 'storage.allocated.capacity.threshold' ;
 update `cloud`.`configuration` set name = 'cluster.storage.capacity.notificationthreshold' , category = 'Alert' where name = 'storage.capacity.threshold' ;
-update `cloud`.`configuration` set name = 'cluster.cpu.capacity.notificationthreshold' , category = 'Alert' where name = 'cpu.capacity.threshold' ;
-update `cloud`.`configuration` set name = 'cluster.memory.capacity.notificationthreshold' , category = 'Alert' where name = 'memory.capacity.threshold' ;
+update `cloud`.`configuration` set name = 'cluster.cpu.allocated.capacity.notificationthreshold' , category = 'Alert' where name = 'cpu.capacity.threshold' ;
+update `cloud`.`configuration` set name = 'cluster.memory.allocated.capacity.notificationthreshold' , category = 'Alert' where name = 'memory.capacity.threshold' ;
 update `cloud`.`configuration` set name = 'zone.virtualnetwork.publicip.capacity.notificationthreshold' , category = 'Alert' where name = 'public.ip.capacity.threshold' ;
 update `cloud`.`configuration` set name = 'pod.privateip.capacity.notificationthreshold' , category = 'Alert' where name = 'private.ip.capacity.threshold' ;
 
@@ -184,14 +189,14 @@ ALTER TABLE `cloud`.`domain` ADD CONSTRAINT `uc_domain__uuid` UNIQUE (`uuid`);
 ALTER TABLE `cloud`.`account` ADD COLUMN `uuid` varchar(40); 
 ALTER TABLE `cloud`.`account` ADD CONSTRAINT `uc_account__uuid` UNIQUE (`uuid`);
 
+ALTER TABLE `cloud_usage`.`account` ADD COLUMN `uuid` varchar(40);
+ALTER TABLE `cloud_usage`.`account` ADD CONSTRAINT `uc_account__uuid` UNIQUE (`uuid`);
+
 ALTER TABLE `cloud`.`user` ADD COLUMN `uuid` varchar(40); 
 ALTER TABLE `cloud`.`user` ADD CONSTRAINT `uc_user__uuid` UNIQUE (`uuid`);
 
 ALTER TABLE `cloud`.`projects` ADD COLUMN `uuid` varchar(40); 
 ALTER TABLE `cloud`.`projects` ADD CONSTRAINT `uc_projects__uuid` UNIQUE (`uuid`);
-
-ALTER TABLE `cloud`.`project_invitations` ADD COLUMN `uuid` varchar(40); 
-ALTER TABLE `cloud`.`project_invitations` ADD CONSTRAINT `uc_project_invitations__uuid` UNIQUE (`uuid`);
 
 ALTER TABLE `cloud`.`data_center` ADD COLUMN `uuid` varchar(40); 
 ALTER TABLE `cloud`.`data_center` ADD CONSTRAINT `uc_data_center__uuid` UNIQUE (`uuid`);
@@ -266,15 +271,6 @@ ALTER TABLE `cloud`.`guest_os_category` ADD CONSTRAINT `uc_guest_os_category__uu
 ALTER TABLE `cloud`.`nics` ADD COLUMN `uuid` varchar(40); 
 ALTER TABLE `cloud`.`nics` ADD CONSTRAINT `uc_nics__uuid` UNIQUE (`uuid`);
 
-CREATE TABLE `cloud`.`vm_template_details` (
-  `id` bigint unsigned NOT NULL auto_increment,
-  `template_id` bigint unsigned NOT NULL COMMENT 'template id',
-  `name` varchar(255) NOT NULL,
-  `value` varchar(1024) NOT NULL,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `fk_vm_template_details__template_id` FOREIGN KEY `fk_vm_template_details__template_id`(`template_id`) REFERENCES `vm_template`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
 ALTER TABLE `cloud`.`op_host_capacity` ADD COLUMN `created` datetime;
 ALTER TABLE `cloud`.`op_host_capacity` ADD COLUMN `update_time` datetime;
 
@@ -304,7 +300,7 @@ UPDATE `cloud_usage`.`usage_network` set agg_bytes_received = net_bytes_received
 ALTER TABLE `cloud_usage`.`usage_vpn_user` ADD INDEX `i_usage_vpn_user__account_id`(`account_id`);
 ALTER TABLE `cloud_usage`.`usage_vpn_user` ADD INDEX `i_usage_vpn_user__created`(`created`);
 ALTER TABLE `cloud_usage`.`usage_vpn_user` ADD INDEX `i_usage_vpn_user__deleted`(`deleted`);
-ALTER TABLE `cloud_usage`.`usage_ip_address` ADD COLUMN `is_elastic` smallint(1) NOT NULL default '0';
+ALTER TABLE `cloud_usage`.`usage_ip_address` ADD COLUMN `is_system` smallint(1) NOT NULL default '0';
 INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Premium', 'DEFAULT', 'management-server', 'usage.sanity.check.interval', null, 'Interval (in days) to check sanity of usage data');
 
 DELETE FROM `cloud`.`configuration` WHERE name='host.capacity.checker.wait';
@@ -323,18 +319,31 @@ ALTER TABLE `cloud`.`security_group_rule` ADD CONSTRAINT `fk_security_group_rule
 ALTER TABLE `cloud`.`security_group_rule` ADD INDEX `i_security_group_rule_network_id`(`security_group_id`);
 ALTER TABLE `cloud`.`security_group_rule` ADD INDEX `i_security_group_rule_allowed_network`(`allowed_network_id`);
 ALTER TABLE `cloud`.`vm_template` ADD COLUMN `enable_sshkey` int(1) unsigned NOT NULL default 0 COMMENT 'true if this template supports sshkey reset';
-ALTER TABLE `cloud`.`host` ADD COLUMN `resource_state` varchar(32) NOT NULL DEFAULT 'Disabled' COMMENT 'Is this host enabled for allocation for new resources';
 ALTER TABLE `cloud`.`vm_template` ADD COLUMN `sort_key` int(32) NOT NULL default 0 COMMENT 'sort key used for customising sort method';
 ALTER TABLE `cloud`.`disk_offering` ADD COLUMN `sort_key` int(32) NOT NULL default 0 COMMENT 'sort key used for customising sort method';
 ALTER TABLE `cloud`.`service_offering` ADD COLUMN `sort_key` int(32) NOT NULL default 0 COMMENT 'sort key used for customising sort method';
 
+---;
+--- Resource State;
+---;
 
+ALTER TABLE `cloud`.`host` ADD COLUMN `resource_state` varchar(32) NOT NULL DEFAULT 'Enabled' COMMENT 'Is this host enabled for allocation for new resources';
+UPDATE `cloud`.`host` SET resource_state='PrepareForMaintenance', status='Disconnected' WHERE status = 'PrepareForMaintenance';
+UPDATE `cloud`.`host` SET resource_state='ErrorInMaintenance', status='Disconnected' WHERE status = 'ErrorInMaintenance';
+UPDATE `cloud`.`host` SET resource_state='Maintenance', status='Disconnected' WHERE status = 'Maintenance';
+
+---;
+--- Storage network
+---;
+update `cloud`.`networks` set guru_name='StorageNetworkGuru' where traffic_type='Storage';
+update `cloud`.`configuration` set value=NULL where name='xen.storage.network.device1' and value='cloud-stor1';
+update `cloud`.`configuration` set value=NULL where name='xen.storage.network.device2' and value='cloud-stor2';
 
 --;
 --NAAS;
 --;
 
-CREATE TABLE  `ntwk_service_map` (
+CREATE TABLE  `cloud`.`ntwk_service_map` (
   `id` bigint unsigned NOT NULL auto_increment,
   `network_id` bigint unsigned NOT NULL COMMENT 'network_id',
   `service` varchar(255) NOT NULL COMMENT 'service',
@@ -391,6 +400,8 @@ CREATE TABLE `cloud`.`physical_network_traffic_types` (
   `xen_network_label` varchar(255) COMMENT 'The network name label of the physical device dedicated to this traffic on a XenServer host',
   `kvm_network_label` varchar(255) DEFAULT 'cloudbr0' COMMENT 'The network name label of the physical device dedicated to this traffic on a KVM host',
   `vmware_network_label` varchar(255) DEFAULT 'vSwitch0' COMMENT 'The network name label of the physical device dedicated to this traffic on a VMware host',
+  `simulator_network_label` varchar(255) COMMENT 'The name labels needed for identifying the simulator',
+  `ovm_network_label` varchar(255) COMMENT 'The network name label of the physical device dedicated to this traffic on a Ovm host',
   `vlan` varchar(255) COMMENT 'The vlan tag to be sent down to a VMware host',
   PRIMARY KEY (`id`),
   CONSTRAINT `fk_physical_network_traffic_types__physical_network_id` FOREIGN KEY (`physical_network_id`) REFERENCES `physical_network`(`id`) ON DELETE CASCADE,
@@ -494,20 +505,17 @@ CREATE TABLE `cloud`.`virtual_router_providers` (
   CONSTRAINT `uc_virtual_router_providers__uuid` UNIQUE (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+ALTER TABLE `cloud`.`domain_router` ADD COLUMN `element_id` bigint unsigned NOT NULL COMMENT 'correlated virtual router provider ID' AFTER id;
 
 INSERT INTO `cloud`.`sequence` (name, value) VALUES ('physical_networks_seq', 200);
 ALTER TABLE `cloud`.`networks` ADD COLUMN `physical_network_id` bigint unsigned COMMENT 'physical network id that this configuration is based on' AFTER network_offering_id;
 ALTER TABLE `cloud`.`vlan` ADD COLUMN `physical_network_id` bigint unsigned NOT NULL COMMENT 'physical network id that this configuration is based on';
-ALTER TABLE `cloud`.`vlan` ADD CONSTRAINT `fk_vlan__physical_network_id` FOREIGN KEY (`physical_network_id`) REFERENCES `physical_network`(`id`);
 ALTER TABLE `cloud`.`op_dc_vnet_alloc` ADD COLUMN `physical_network_id` bigint unsigned NOT NULL COMMENT 'physical network the vnet belongs to';
-ALTER TABLE `cloud`.`op_dc_vnet_alloc` ADD CONSTRAINT `fk_op_dc_vnet_alloc__physical_network_id` FOREIGN KEY (`physical_network_id`) REFERENCES `physical_network`(`id`) ON DELETE CASCADE;
 ALTER TABLE `cloud`.`user_ip_address` ADD COLUMN `physical_network_id` bigint unsigned NOT NULL COMMENT 'physical network id that this configuration is based on';
-ALTER TABLE `cloud`.`user_ip_address` ADD CONSTRAINT `fk_user_ip_address__physical_network_id` FOREIGN KEY (`physical_network_id`) REFERENCES `physical_network`(`id`) ON DELETE CASCADE;
 
 ALTER TABLE `cloud`.`networks` ADD COLUMN `restart_required` int(1) unsigned NOT NULL DEFAULT 0 COMMENT '1 if restart is required for the network';
 DELETE FROM `cloud`.`configuration` where name='cmd.wait';
 
-ALTER TABLE `cloud`.`network_offerings` ADD COLUMN `conserve` int(1) unsigned NOT NULL DEFAULT 0 COMMENT 'Is this network offering is IP conserve mode enabled';
 UPDATE `cloud`.`configuration` set value='true' where name='firewall.rule.ui.enabled';
 CREATE TABLE  `cloud`.`op_user_stats_log` (
   `user_stats_id` bigint unsigned NOT NULL,
@@ -521,7 +529,6 @@ CREATE TABLE  `cloud`.`op_user_stats_log` (
   UNIQUE KEY (`user_stats_id`, `updated`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-ALTER TABLE `cloud`.`physical_network_traffic_types` ADD COLUMN `simulator_network_label` varchar(255) COMMENT  'The name labels needed for identifying the simulator';
 
 --;
 -- Network offerings
@@ -534,6 +541,8 @@ ALTER TABLE `cloud`.`network_offerings` ADD COLUMN `conserve_mode` int(1) unsign
 
 ALTER TABLE `cloud`.`network_offerings` MODIFY `name` varchar(64) COMMENT 'name of the network offering';
 ALTER TABLE `cloud`.`network_offerings` MODIFY `unique_name` varchar(64) COMMENT 'unique name of the network offering';
+ALTER TABLE `cloud`.`network_offerings` MODIFY `service_offering_id` bigint unsigned COMMENT 'service offering id that virtual router is tied to';
+
 ALTER TABLE `cloud`.`network_offerings` DROP `concurrent_connections`;
 
 ALTER TABLE `cloud`.`network_offerings` ADD COLUMN `state` char(32) COMMENT 'state of the network offering that has Disabled value by default';
@@ -568,14 +577,14 @@ insert into `cloud`.`network_offerings` (`name`, `unique_name`, `display_text`, 
 UPDATE `cloud`.`network_offerings` set specify_ip_ranges=1 where name in ('System-Public-Network', 'System-Storage-Network', 'DefaultSharedNetworkOfferingWithSGService', 'DefaultSharedNetworkOffering', 'DefaultIsolatedNetworkOffering');
 
 
-CREATE TABLE  `ntwk_offering_service_map` (
+CREATE TABLE  `cloud`.`ntwk_offering_service_map` (
   `id` bigint unsigned NOT NULL auto_increment,
   `network_offering_id` bigint unsigned NOT NULL COMMENT 'network_offering_id',
   `service` varchar(255) NOT NULL COMMENT 'service',
   `provider` varchar(255) COMMENT 'service provider',
   `created` datetime COMMENT 'date created',
   PRIMARY KEY (`id`),
-  CONSTRAINT `fk_ntwk_offering_service_map__network_offering_id` FOREIGN KEY(`network_offering_id`) REFERENCES `network_offerings`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ntwk_offering_service_map__network_offering_id` FOREIGN KEY(`network_offering_id`) REFERENCES `cloud`.`network_offerings`(`id`) ON DELETE CASCADE,
   UNIQUE (`network_offering_id`, `service`, `provider`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
@@ -606,10 +615,10 @@ CREATE TABLE `cloud`.`op_dc_storage_network_ip_address` (
   CONSTRAINT `fk_storage_ip_address__range_id` FOREIGN KEY (`range_id`) REFERENCES `dc_storage_network_ip_range`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-update `cloud`.`networks` set guru_name='StorageNetworkGuru' where traffic_type='Storage';
 
 ALTER TABLE  `cloud`.`event` ADD COLUMN `domain_id` bigint unsigned NOT NULL;
 ALTER TABLE  `cloud`.`op_host_capacity` ADD COLUMN `capacity_state` varchar(32) NOT NULL DEFAULT 'Enabled';
+UPDATE `cloud`.`event` set account_id=1, user_id=1 where account_id=0 and user_id=0;
 UPDATE `cloud`.`event` e set e.domain_id = (select acc.domain_id from `cloud`.`account` acc where acc.id = e.account_id) where e.domain_id = 0;
 
 update `cloud`.`vm_template` set removed=now() where id=2;
@@ -623,7 +632,7 @@ UPDATE `cloud`.`networks` SET acl_type='Domain' where guest_type is not null and
 UPDATE `cloud`.`networks` SET acl_type='Account' where guest_type='Virtual';
 UPDATE `cloud`.`networks` SET acl_type='Account' where guest_type='Direct' and shared=0;
 ALTER TABLE `cloud`.`domain_network_ref` ADD COLUMN `subdomain_access` int(1) unsigned COMMENT '1 if network can be accessible from the subdomain';
-UPDATE `cloud`.`networks` SET specify_ip_ranges=(SELECT specify_ip_ranges FROM network_offerings no where no.id=network_offering_id);
+UPDATE `cloud`.`networks` SET specify_ip_ranges=(SELECT specify_ip_ranges FROM `cloud`.`network_offerings` no where no.id=network_offering_id);
 
 
 DELETE FROM `cloud`.`configuration` WHERE name='network.redundantrouter';
@@ -646,8 +655,26 @@ UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.public.
 UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.private.network.device';
 UPDATE `cloud`.`configuration` SET category = 'Hidden' WHERE name = 'kvm.guest.network.device';
 
-ALTER TABLE `cloud`.`physical_network_traffic_types` ADD COLUMN `ovm_network_label` varchar(255) COMMENT 'The network name label of the physical device dedicated to this traffic on a Ovm host';
 ALTER TABLE `cloud`.`dc_storage_network_ip_range` ADD COLUMN `gateway` varchar(15) NOT NULL COMMENT 'gateway ip address';
+
+ALTER TABLE `cloud`.`volumes` ADD COLUMN `last_pool_id` bigint unsigned;
+UPDATE `cloud`.`volumes` SET `last_pool_id` = `pool_id`;
+
+ALTER TABLE `cloud`.`user_ip_address` ADD COLUMN `is_system` int(1) unsigned NOT NULL default '0';
+ALTER TABLE `cloud`.`volumes` ADD COLUMN `update_count` bigint unsigned NOT NULL DEFAULT 0;
+ALTER TABLE `cloud`.`volumes` ADD INDEX `i_volumes__update_count`(`update_count`);
+ALTER TABLE `cloud`.`firewall_rules` ADD COLUMN `type` varchar(10) NOT NULL DEFAULT 'USER';
+
+CREATE TABLE `cloud`.`account_details` (
+  `id` bigint unsigned NOT NULL auto_increment,
+  `account_id` bigint unsigned NOT NULL COMMENT 'account id',
+  `name` varchar(255) NOT NULL,
+  `value` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_account_details__account_id` FOREIGN KEY (`account_id`) REFERENCES `account`(`id`) ON DELETE CASCADE
+)ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+DROP TABLE IF EXISTS `cloud_usage`.`usage_security_group`;
 
 CREATE TABLE  `cloud_usage`.`usage_security_group` (
   `zone_id` bigint unsigned NOT NULL,
@@ -662,3 +689,27 @@ CREATE TABLE  `cloud_usage`.`usage_security_group` (
 ALTER TABLE `cloud_usage`.`usage_security_group` ADD INDEX `i_usage_security_group__account_id`(`account_id`);
 ALTER TABLE `cloud_usage`.`usage_security_group` ADD INDEX `i_usage_security_group__created`(`created`);
 ALTER TABLE `cloud_usage`.`usage_security_group` ADD INDEX `i_usage_security_group__deleted`(`deleted`);
+
+UPDATE `cloud`.`configuration` SET category = 'Usage' where category = 'Premium';
+
+ALTER TABLE  `cloud`.`op_dc_vnet_alloc` ADD CONSTRAINT `fk_op_dc_vnet_alloc__data_center_id` FOREIGN KEY (`data_center_id`) REFERENCES `data_center`(`id`) ON DELETE CASCADE;
+ALTER TABLE `cloud`.`domain` ADD COLUMN `type` varchar(255) NOT NULL DEFAULT 'Normal' COMMENT 'type of the domain - can be Normal or Project';
+
+UPDATE `cloud`.`configuration` SET name='vm.destroy.forcestop' where name='vm.destory.forcestop';
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'vm.destroy.forcestop', 'false', 'On destroy, force-stop takes this value');
+DELETE FROM `cloud`.`configuration` where name='skip.steps';
+
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'external.lb.default.capacity', '50', 'default number of networks permitted per external load balancer device');
+
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'external.firewall.default.capacity', '50', 'default number of networks permitted per external load firewall device');
+
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'resourcecount.check.interval', '0', 'Time (in seconds) to wait before retrying resource count check task. Default is 0 which is to never run the task');
+
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'AgentManager', 'secstorage.proxy', null, 'http proxy used by ssvm, in http://username:password@proxyserver:port format');
+
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'AgentManager', 'secstorage.vm.mtu.size', '1500', 'MTU size (in Byte) of storage network in secondary storage vms');
+
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'sortkey.algorithm', 'false', 'Sort algorithm for those who use sort key(template, disk offering, service offering, network offering), true means ascending sort while false means descending sort');
+
+INSERT IGNORE INTO `cloud`.`configuration` VALUES ('Advanced', 'DEFAULT', 'management-server', 'system.vm.default.hypervisor', null, 'Hypervisor type used to create system vm');
+

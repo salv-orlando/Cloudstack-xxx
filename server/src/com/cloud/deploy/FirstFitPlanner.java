@@ -69,11 +69,13 @@ import com.cloud.storage.dao.GuestOSDao;
 import com.cloud.storage.dao.StoragePoolDao;
 import com.cloud.storage.dao.StoragePoolHostDao;
 import com.cloud.storage.dao.VolumeDao;
+import com.cloud.user.AccountManager;
 import com.cloud.utils.NumbersUtil;
 import com.cloud.utils.Pair;
 import com.cloud.utils.component.Adapters;
 import com.cloud.utils.component.Inject;
 import com.cloud.vm.DiskProfile;
+import com.cloud.vm.ReservationContext;
 import com.cloud.vm.VirtualMachine;
 import com.cloud.vm.VirtualMachineProfile;
 import com.cloud.vm.dao.UserVmDao;
@@ -97,6 +99,7 @@ public class FirstFitPlanner extends PlannerBase implements DeploymentPlanner {
     @Inject protected ConfigurationDao _configDao;
     @Inject protected StoragePoolDao _storagePoolDao;
     @Inject protected CapacityDao _capacityDao;
+    @Inject protected AccountManager _accountMgr;
 
     @Inject(adapter=StoragePoolAllocator.class)
     protected Adapters<StoragePoolAllocator> _storagePoolAllocators;
@@ -152,7 +155,7 @@ public class FirstFitPlanner extends PlannerBase implements DeploymentPlanner {
             }
 
             //search for storage under the zone, pod, cluster of the host.
-            DataCenterDeployment lastPlan = new DataCenterDeployment(host.getDataCenterId(), host.getPodId(), host.getClusterId(), hostIdSpecified, plan.getPoolId(), null);
+            DataCenterDeployment lastPlan = new DataCenterDeployment(host.getDataCenterId(), host.getPodId(), host.getClusterId(), hostIdSpecified, plan.getPoolId(), null, plan.getReservationContext());
 
             Pair<Map<Volume, List<StoragePool>>, List<Volume>> result = findSuitablePoolsForVolumes(vmProfile, lastPlan, avoid, HostAllocator.RETURN_UPTO_ALL);
             Map<Volume, List<StoragePool>> suitableVolumeStoragePools = result.first();
@@ -294,13 +297,15 @@ public class FirstFitPlanner extends PlannerBase implements DeploymentPlanner {
                 }
                 podsWithCapacity.removeAll(avoid.getPodsToAvoid());
             }
-            List<Long> disabledPods = listDisabledPods(plan.getDataCenterId());
-            if(!disabledPods.isEmpty()){
-                if (s_logger.isDebugEnabled()) {
-                    s_logger.debug("Removing from the podId list these pods that are disabled: "+ disabledPods);
+            if(!isRootAdmin(plan.getReservationContext())){
+                List<Long> disabledPods = listDisabledPods(plan.getDataCenterId());
+                if(!disabledPods.isEmpty()){
+                    if (s_logger.isDebugEnabled()) {
+                        s_logger.debug("Removing from the podId list these pods that are disabled: "+ disabledPods);
+                    }
+                    podsWithCapacity.removeAll(disabledPods);
                 }
-                podsWithCapacity.removeAll(disabledPods);
-            }
+           }
         }else{
             if (s_logger.isDebugEnabled()) {
                 s_logger.debug("No pods found having a host with enough capacity, returning.");
@@ -354,18 +359,20 @@ public class FirstFitPlanner extends PlannerBase implements DeploymentPlanner {
                 prioritizedClusterIds.removeAll(avoid.getClustersToAvoid());
             }
             
-            List<Long> disabledClusters = new ArrayList<Long>();
-            if(isZone){
-                disabledClusters = listDisabledClusters(plan.getDataCenterId(), null);
-            }else{
-                disabledClusters = listDisabledClusters(plan.getDataCenterId(), id);
-            }
-            if(!disabledClusters.isEmpty()){
-                if (s_logger.isDebugEnabled()) {
-                    s_logger.debug("Removing from the clusterId list these clusters that are disabled/clusters under disabled pods: "+ disabledClusters);
+            if(!isRootAdmin(plan.getReservationContext())){
+                List<Long> disabledClusters = new ArrayList<Long>();
+                if(isZone){
+                    disabledClusters = listDisabledClusters(plan.getDataCenterId(), null);
+                }else{
+                    disabledClusters = listDisabledClusters(plan.getDataCenterId(), id);
                 }
-                prioritizedClusterIds.removeAll(disabledClusters);
-            }            
+                if(!disabledClusters.isEmpty()){
+                    if (s_logger.isDebugEnabled()) {
+                        s_logger.debug("Removing from the clusterId list these clusters that are disabled/clusters under disabled pods: "+ disabledClusters);
+                    }
+                    prioritizedClusterIds.removeAll(disabledClusters);
+                }
+            }
         }else{
             if (s_logger.isDebugEnabled()) {
                 s_logger.debug("No clusters found having a host with enough capacity, returning.");
@@ -507,7 +514,7 @@ public class FirstFitPlanner extends PlannerBase implements DeploymentPlanner {
             
             s_logger.debug("Checking resources in Cluster: "+clusterId + " under Pod: "+clusterVO.getPodId());
             //search for resources(hosts and storage) under this zone, pod, cluster.
-            DataCenterDeployment potentialPlan = new DataCenterDeployment(plan.getDataCenterId(), clusterVO.getPodId(), clusterVO.getId(), null, plan.getPoolId(), null);
+            DataCenterDeployment potentialPlan = new DataCenterDeployment(plan.getDataCenterId(), clusterVO.getPodId(), clusterVO.getId(), null, plan.getPoolId(), null, plan.getReservationContext());
 
             //find suitable hosts under this cluster, need as many hosts as we get.
             List<Host> suitableHosts = findSuitableHosts(vmProfile, potentialPlan, avoid, HostAllocator.RETURN_UPTO_ALL);
@@ -731,16 +738,18 @@ public class FirstFitPlanner extends PlannerBase implements DeploymentPlanner {
             if(s_logger.isDebugEnabled()){
                 s_logger.debug("We need to allocate new storagepool for this volume");
             }
-            if(!isEnabledForAllocation(plan.getDataCenterId(), plan.getPodId(), plan.getClusterId())){
-                if(s_logger.isDebugEnabled()){
-                    s_logger.debug("Cannot allocate new storagepool for this volume in this cluster, allocation state is disabled");                    
-                    s_logger.debug("Cannot deploy to this specified plan, allocation state is disabled, returning.");
+            if(!isRootAdmin(plan.getReservationContext())){
+                if(!isEnabledForAllocation(plan.getDataCenterId(), plan.getPodId(), plan.getClusterId())){
+                    if(s_logger.isDebugEnabled()){
+                        s_logger.debug("Cannot allocate new storagepool for this volume in this cluster, allocation state is disabled");                    
+                        s_logger.debug("Cannot deploy to this specified plan, allocation state is disabled, returning.");
+                    }
+                    //Cannot find suitable storage pools under this cluster for this volume since allocation_state is disabled. 
+                    //- remove any suitable pools found for other volumes.
+                    //All volumes should get suitable pools under this cluster; else we cant use this cluster.
+                    suitableVolumeStoragePools.clear();                
+                    break;
                 }
-                //Cannot find suitable storage pools under this cluster for this volume since allocation_state is disabled. 
-                //- remove any suitable pools found for other volumes.
-                //All volumes should get suitable pools under this cluster; else we cant use this cluster.
-                suitableVolumeStoragePools.clear();                
-                break;
             }
 
             s_logger.debug("Calling StoragePoolAllocators to find suitable pools");
@@ -797,6 +806,17 @@ public class FirstFitPlanner extends PlannerBase implements DeploymentPlanner {
         return new Pair<Map<Volume, List<StoragePool>>, List<Volume>>(suitableVolumeStoragePools, readyAndReusedVolumes);
     }
 
+
+    private boolean isRootAdmin(ReservationContext reservationContext) {
+        if(reservationContext != null){
+            if(reservationContext.getAccount() != null){
+                return _accountMgr.isRootAdmin(reservationContext.getAccount().getType());
+            }else{
+                return false;
+            }
+        }
+        return false;
+    }
 
     @Override
     public boolean check(VirtualMachineProfile<? extends VirtualMachine> vm, DeploymentPlan plan,

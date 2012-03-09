@@ -51,6 +51,7 @@ import com.cloud.configuration.Config;
 import com.cloud.configuration.Resource.ResourceType;
 import com.cloud.configuration.dao.ConfigurationDao;
 import com.cloud.dc.ClusterVO;
+import com.cloud.dc.DataCenter;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.dc.dao.DataCenterDao;
 import com.cloud.domain.dao.DomainDao;
@@ -68,6 +69,7 @@ import com.cloud.exception.StorageUnavailableException;
 import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
+import com.cloud.org.Grouping;
 import com.cloud.projects.Project.ListProjectResourcesCriteria;
 import com.cloud.projects.ProjectManager;
 import com.cloud.resource.ResourceManager;
@@ -181,6 +183,8 @@ public class SnapshotManagerImpl implements SnapshotManager, SnapshotService, Ma
     private ResourceManager _resourceMgr;
     @Inject
     private DomainManager _domainMgr;
+    @Inject
+    private VolumeDao _volumeDao;
     String _name;
     private int _totalRetries;
     private int _pauseInterval;
@@ -282,7 +286,7 @@ public class SnapshotManagerImpl implements SnapshotManager, SnapshotService, Ma
 
         String preSnapshotPath = null;
         SnapshotVO preSnapshotVO = null;
-        if (preId != 0) {
+        if (preId != 0 && !(volume.getLastPoolId() != null && !volume.getLastPoolId().equals(volume.getPoolId()))) {
             preSnapshotVO = _snapshotDao.findByIdIncludingRemoved(preId);
             if (preSnapshotVO != null && preSnapshotVO.getBackupSnapshotId() != null) {
                 preSnapshotPath = preSnapshotVO.getPath();
@@ -337,6 +341,7 @@ public class SnapshotManagerImpl implements SnapshotManager, SnapshotService, Ma
                 if (volume.getLastPoolId() != null && !volume.getLastPoolId().equals(volume.getPoolId())) {
                 	preSnapshotId = 0;
                 	volume.setLastPoolId(volume.getPoolId());
+                	_volumeDao.update(volume.getId(), volume);
                 }
                 snapshot = updateDBOnCreate(snapshotId, answer.getSnapshotPath(), preSnapshotId);
             }
@@ -700,11 +705,9 @@ public class SnapshotManagerImpl implements SnapshotManager, SnapshotService, Ma
     @DB
     public void postCreateSnapshot(Long volumeId, Long snapshotId, Long policyId, boolean backedUp) {
         Long userId = getSnapshotUserId();
-        SnapshotVO snapshot = _snapshotDao.findByIdIncludingRemoved(snapshotId);
-        // Even if the current snapshot failed, we should schedule the next
-        // recurring snapshot for this policy.
+        SnapshotVO snapshot = _snapshotDao.findById(snapshotId);
         
-        if (snapshot.isRecursive()) {
+        if (snapshot != null && snapshot.isRecursive()) {
             postCreateRecurringSnapshotForPolicy(userId, volumeId, snapshotId, policyId);
         }
     }
@@ -1275,10 +1278,20 @@ public class SnapshotManagerImpl implements SnapshotManager, SnapshotService, Ma
     @Override
     public SnapshotVO allocSnapshot(Long volumeId, Long policyId) throws ResourceAllocationException {
         Account caller = UserContext.current().getCaller();
+        
         VolumeVO volume = _volsDao.findById(volumeId);
         if (volume == null) {
             throw new InvalidParameterValueException("Creating snapshot failed due to volume:" + volumeId + " doesn't exist");
         }
+        DataCenter zone = _dcDao.findById(volume.getDataCenterId());
+        if (zone == null) {
+            throw new InvalidParameterValueException("Can't find zone by id " + volume.getDataCenterId());
+        }
+        
+        if (Grouping.AllocationState.Disabled == zone.getAllocationState() && !_accountMgr.isRootAdmin(caller.getType())) {
+            throw new PermissionDeniedException("Cannot perform this operation, Zone is currently disabled: " + zone.getName());
+        }
+        
         if (volume.getState() != Volume.State.Ready) {
             throw new InvalidParameterValueException("VolumeId: " + volumeId + " is not in " + Volume.State.Ready + " state but " + volume.getState() + ". Cannot take snapshot.");
         }

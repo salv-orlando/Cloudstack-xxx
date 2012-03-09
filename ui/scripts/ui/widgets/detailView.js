@@ -82,9 +82,11 @@
         if (customAction && !noAdd) {
           customAction({
             context: context,
+            $detailView: $detailView,
             complete: function(args) {
               // Set loading appearance
               var $loading = $('<div>').addClass('loading-overlay');
+
               $detailView.prepend($loading);
 
               args = args ? args : {};
@@ -92,20 +94,23 @@
               var $item = args.$item;
 
               notification.desc = messages.notification(args.messageArgs);
-              notification._custom = args._custom;
+              notification._custom = $.extend(args._custom ? args._custom : {}, {
+                $detailView: $detailView
+              });
 
               cloudStack.ui.notifications.add(
                 notification,
 
                 // Success
                 function(args) {
-                $loading.remove();
+                  if (!$detailView.is(':visible')) return;
+
+                  $loading.remove();
+                  replaceListViewItem($detailView, args.data);
 
                   if (!noRefresh) {
                     updateTabContent(args.data);
                   }
-                  
-                  replaceListViewItem($detailView, args.data);
                 },
 
                 {},
@@ -131,7 +136,9 @@
             response: {
               success: function(args) {
                 args = args ? args : {};
-                notification._custom = args._custom;
+                notification._custom = $.extend(args._custom ? args._custom : {}, {
+                  $detailView: $detailView
+                });
 
                 if (additional && additional.success) additional.success(args);
 
@@ -235,7 +242,7 @@
       }
     },
 
-    destroy: function($detailView, args) {
+    remove: function($detailView, args) {
       uiActions.standard($detailView, args, {
         noRefresh: true,
         complete: function(args) {
@@ -247,6 +254,10 @@
               panel: $panel.prev()
             });
           }
+										
+					if($detailView.data("list-view-row") != null) {					 
+					  $detailView.data("list-view-row").remove();
+					}					
         }
       });
     },
@@ -774,7 +785,7 @@
       jsonObj: jsonObj,
       context: args.context,
       response: {
-        success: function(args) {
+        success: function(args) {				
           if (options.newData) {
             $.extend(args.data, options.newData);
           }
@@ -784,6 +795,10 @@
           }
           var tabData = $tabContent.data('detail-view-tab-data');
           var data = args.data;
+										
+					if($detailView.data('list-view-row') != null)
+					  $detailView.data('list-view-row').data('json-obj', data); //refresh embedded data in corresponding list view row
+					
           var isFirstPanel = $tabContent.index($detailView.find('div.detail-group.ui-tabs-panel')) == 0;
           var actionFilter = args.actionFilter;
 

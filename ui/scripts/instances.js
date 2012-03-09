@@ -1,6 +1,6 @@
 (function($, cloudStack) {
 
-  var zoneObjs, hypervisorObjs, featuredTemplateObjs, communityTemplateObjs, myTemplateObjs, featuredIsoObjs, communityIsoObjs, myIsoObjs, serviceOfferingObjs, diskOfferingObjs, networkOfferingObjs;
+  var zoneObjs, hypervisorObjs, featuredTemplateObjs, communityTemplateObjs, myTemplateObjs, featuredIsoObjs, communityIsoObjs, myIsoObjs, serviceOfferingObjs, diskOfferingObjs, networkOfferingObjs, physicalNetworkObjs;
   var selectedZoneObj, selectedTemplateObj, selectedHypervisor, selectedDiskOfferingObj; 
   var step5ContainerType = 'nothing-to-select'; //'nothing-to-select', 'select-network', 'select-security-group'
 
@@ -23,9 +23,17 @@
           },
           label: 'state.Destroyed'
         }
-      },
+      },			
+			preFilter: function(args) {
+				var hiddenFields = [];
+				if(!isAdmin()) {				
+					hiddenFields.push('instancename');
+				}			
+				return hiddenFields;
+			},			
       fields: {        
         displayname: { label: 'label.display.name' },
+				instancename: { label: 'label.internal.name' },
         zonename: { label: 'label.zone.name' },
         state: {
           label: 'label.state',
@@ -160,8 +168,7 @@
                         
 												featuredisos: featuredIsoObjs,
                         communityisos: communityIsoObjs,
-                        myisos: myIsoObjs //???
-												//isos: isoObjs
+                        myisos: myIsoObjs 										
                       },
                       hypervisors: hypervisorObjs
                     }
@@ -306,15 +313,22 @@
                       }
                     });
 
+																				
+										var apiCmd = "listNetworkOfferings&guestiptype=Isolated&supportedServices=sourceNat&state=Enabled&specifyvlan=false&zoneid=" + args.currentData.zoneid ; 
+										var array1 = [];
+                    var guestTrafficTypeTotal = 0;
+
                     $.ajax({
-                      url: createURL("listNetworkOfferings&guestiptype=Isolated&supportedServices=sourceNat&state=Enabled"), //get the network offering for isolated network with sourceNat
+                      url: createURL(apiCmd + array1.join("")), //get the network offering for isolated network with sourceNat
                       dataType: "json",
                       async: false,
                       success: function(json) {
                         networkOfferingObjs  = json.listnetworkofferingsresponse.networkoffering;
                       }
                     });
-
+                    //get network offerings (end)	***			
+										
+										
                     args.response.success({
                       type: 'select-network',
                       data: {
@@ -1489,14 +1503,19 @@
               if (!args.context.instances[0].publicip) {
                 hiddenFields.push('publicip');
               }
-              
+              												
+							if(!isAdmin()) {				
+								hiddenFields.push('instancename');
+							}			
+														
               return hiddenFields;
             },
 
             fields: [
               {                       
                 id: { label: 'label.id', isEditable: false },
-                displayname: { label: 'label.display.name', isEditable: true },								   
+                displayname: { label: 'label.display.name', isEditable: true },		
+                instancename: { label: 'label.internal.name' },								
                 state: { label: 'label.state', isEditable: false },
                 publicip: { label: 'label.public.ip', isEditable: false },
                 zonename: { label: 'label.zone.name', isEditable: false },
@@ -1540,13 +1559,21 @@
               }
             ],
 
-            dataProvider: function(args) {
-              args.response.success(
-                {
-                  actionFilter: vmActionfilter,
-                  data: args.context.instances[0]
-                }
-              );
+            dataProvider: function(args) {						 
+							$.ajax({
+								url: createURL("listVirtualMachines&id=" + args.context.instances[0].id),
+								dataType: "json",
+								async: true,
+								success: function(json) {								  
+									var jsonObj = json.listvirtualmachinesresponse.virtualmachine[0];   
+									args.response.success(
+										{
+											actionFilter: vmActionfilter,
+											data: jsonObj
+										}
+									);		
+								}
+							});
             }
           },
 

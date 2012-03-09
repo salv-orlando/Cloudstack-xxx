@@ -55,6 +55,7 @@ import com.cloud.api.commands.DeleteServiceOfferingCmd;
 import com.cloud.api.commands.DeleteVlanIpRangeCmd;
 import com.cloud.api.commands.DeleteZoneCmd;
 import com.cloud.api.commands.LDAPConfigCmd;
+import com.cloud.api.commands.LDAPRemoveCmd;
 import com.cloud.api.commands.ListNetworkOfferingsCmd;
 import com.cloud.api.commands.UpdateCfgCmd;
 import com.cloud.api.commands.UpdateDiskOfferingCmd;
@@ -322,9 +323,6 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
     @Override
     @DB
     public void updateConfiguration(long userId, String name, String category, String value) {
-        if (value != null && (value.trim().isEmpty() || value.equals("null"))) {
-            value = null;
-        }
 
         String validationMsg = validateConfigurationValue(name, value);
 
@@ -448,29 +446,39 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         if (value == null) {
             return _configDao.findByName(name);
         }
+        
+        if (value.trim().isEmpty() || value.equals("null")) {
+            value = null;
+        }
 
         updateConfiguration(userId, name, config.getCategory(), value);
-        if (_configDao.getValue(name).equalsIgnoreCase(value)) {
+        String updatedValue = _configDao.getValue(name);
+        if ((value == null && updatedValue == null) || updatedValue.equalsIgnoreCase(value)) {
             return _configDao.findByName(name);
+
         } else {
             throw new CloudRuntimeException("Unable to update configuration parameter " + name);
         }
     }
 
     private String validateConfigurationValue(String name, String value) {
-        if (value == null) {
-            return null;
-        }
-
+    
         Config c = Config.getConfig(name);
-        value = value.trim();
-
         if (c == null) {
             s_logger.error("Missing configuration variable " + name + " in configuration table");
             return "Invalid configuration variable.";
         }
 
         Class<?> type = c.getType();
+        
+        if (value == null) {
+            if (type.equals(Boolean.class)) {
+                return "Please enter either 'true' or 'false'.";
+            }
+            return null;
+        }
+        value = value.trim();
+        
         if (type.equals(Boolean.class)) {
             if (!(value.equals("true") || value.equals("false"))) {
                 s_logger.error("Configuration variable " + name + " is expecting true or false in stead of " + value);
@@ -1234,6 +1242,21 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
 
     @Override
     @DB
+    public boolean removeLDAP(LDAPRemoveCmd cmd) {
+        _configDao.expunge(LDAPParams.hostname.toString());
+        _configDao.expunge(LDAPParams.port.toString());
+        _configDao.expunge(LDAPParams.queryfilter.toString());
+        _configDao.expunge(LDAPParams.searchbase.toString());
+        _configDao.expunge(LDAPParams.usessl.toString());
+        _configDao.expunge(LDAPParams.dn.toString());
+        _configDao.expunge(LDAPParams.passwd.toString());
+        _configDao.expunge(LDAPParams.truststore.toString());
+        _configDao.expunge(LDAPParams.truststorepass.toString());
+    	return true;
+    }
+
+    @Override
+    @DB
     public boolean updateLDAP(LDAPConfigCmd cmd) {
         try {
             // set the ldap details in the zone details table with a zone id of -12
@@ -1277,21 +1300,21 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
             // store the result in DB COnfiguration
             ConfigurationVO cvo = _configDao.findByName(LDAPParams.hostname.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.hostname.toString(), null, "Hostname or ip address of the ldap server eg: my.ldap.com");
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.hostname.toString(), null, "Hostname or ip address of the ldap server eg: my.ldap.com");
             }
             cvo.setValue(hostname);
             _configDao.persist(cvo);
 
             cvo = _configDao.findByName(LDAPParams.port.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.port.toString(), null, "Specify the LDAP port if required, default is 389");
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.port.toString(), null, "Specify the LDAP port if required, default is 389");
             }
             cvo.setValue(port.toString());
             _configDao.persist(cvo);
 
             cvo = _configDao.findByName(LDAPParams.queryfilter.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.queryfilter.toString(), null,
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.queryfilter.toString(), null,
                         "You specify a query filter here, which narrows down the users, who can be part of this domain");
             }
             cvo.setValue(queryFilter);
@@ -1299,7 +1322,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
 
             cvo = _configDao.findByName(LDAPParams.searchbase.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.searchbase.toString(), null,
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.searchbase.toString(), null,
                         "The search base defines the starting point for the search in the directory tree Example:  dc=cloud,dc=com.");
             }
             cvo.setValue(searchBase);
@@ -1307,35 +1330,35 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
 
             cvo = _configDao.findByName(LDAPParams.usessl.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.usessl.toString(), null, "Check Use SSL if the external LDAP server is configured for LDAP over SSL.");
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.usessl.toString(), null, "Check Use SSL if the external LDAP server is configured for LDAP over SSL.");
             }
             cvo.setValue(useSSL.toString());
             _configDao.persist(cvo);
 
             cvo = _configDao.findByName(LDAPParams.dn.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.dn.toString(), null, "Specify the distinguished name of a user with the search permission on the directory");
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.dn.toString(), null, "Specify the distinguished name of a user with the search permission on the directory");
             }
             cvo.setValue(bindDN);
             _configDao.persist(cvo);
 
             cvo = _configDao.findByName(LDAPParams.passwd.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.passwd.toString(), null, "Enter the password");
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.passwd.toString(), null, "Enter the password");
             }
             cvo.setValue(DBEncryptionUtil.encrypt(bindPasswd));
             _configDao.persist(cvo);
 
             cvo = _configDao.findByName(LDAPParams.truststore.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.truststore.toString(), null, "Enter the path to trusted keystore");
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.truststore.toString(), null, "Enter the path to trusted keystore");
             }
             cvo.setValue(trustStore);
             _configDao.persist(cvo);
 
             cvo = _configDao.findByName(LDAPParams.truststorepass.toString());
             if (cvo == null) {
-                cvo = new ConfigurationVO("Advanced", "DEFAULT", "management-server", LDAPParams.truststorepass.toString(), null, "Enter the password for trusted keystore");
+                cvo = new ConfigurationVO("Hidden", "DEFAULT", "management-server", LDAPParams.truststorepass.toString(), null, "Enter the password for trusted keystore");
             }
             cvo.setValue(DBEncryptionUtil.encrypt(trustStorePassword));
             _configDao.persist(cvo);
@@ -3101,6 +3124,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         // populate providers
         Map<Provider, Set<Service>> providerCombinationToVerify = new HashMap<Provider, Set<Service>>();
         Map<String, List<String>> svcPrv = cmd.getServiceProviders();
+        boolean isSrx = false;
         if (svcPrv != null) {
             for (String serviceStr : svcPrv.keySet()) {
                 Network.Service service = Network.Service.getService(serviceStr);
@@ -3117,11 +3141,10 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
                             throw new InvalidParameterValueException("Invalid service provider: " + prvNameStr);
                         }
 
-                        // Only VirtualRouter can be specified as a firewall provider
-                        if (service == Service.Firewall && provider != Provider.VirtualRouter) {
-                            throw new InvalidParameterValueException("Only Virtual router can be specified as a provider for the Firewall service");
+                        if (provider == Provider.JuniperSRX) {
+                            isSrx = true;
                         }
-
+                            
                         providers.add(provider);
 
                         Set<Service> serviceSet = null;
@@ -3169,6 +3192,14 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         serviceCapabilityMap.put(Service.Lb, lbServiceCapabilityMap);
         serviceCapabilityMap.put(Service.SourceNat, sourceNatServiceCapabilityMap);
         serviceCapabilityMap.put(Service.StaticNat, staticNatServiceCapabilityMap);
+        
+        //if Firewall service is missing, and Juniper is a provider for any other service, add Firewall service/provider combination
+        if (isSrx)  {
+            s_logger.debug("Adding Firewall service with provider " + Provider.JuniperSRX.getName());
+            Set<Provider> firewallProvider = new HashSet<Provider>();
+            firewallProvider.add(Provider.JuniperSRX);
+            serviceProviderMap.put(Service.Firewall, firewallProvider);
+        }
 
         return createNetworkOffering(userId, name, displayText, trafficType, tags, specifyVlan, availability, networkRate, serviceProviderMap, false, guestType,
                 false, serviceOfferingId, conserveMode, serviceCapabilityMap, specifyIpRanges);
@@ -3265,7 +3296,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         }
 
         // specifyVlan should always be true for Shared network offerings and Isolated network offerings with
-// specifyIpRanges = true
+        // specifyIpRanges = true
         if (!specifyVlan) {
             if (type == GuestType.Shared) {
                 throw new InvalidParameterValueException("SpecifyVlan should be true if network offering's type is " + type);
@@ -3392,6 +3423,7 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         List<String> supportedServicesStr = cmd.getSupportedServices();
         Object specifyIpRanges = cmd.getSpecifyIpRanges();
         String tags = cmd.getTags();
+        Boolean isTagged = cmd.isTagged();
 
         if (zoneId != null) {
             zone = getZone(zoneId);
@@ -3486,15 +3518,35 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
         }
         
         if (tags != null) {
-            if (tags.isEmpty()) {
-                sc.addAnd("tags", SearchCriteria.Op.NULL);
+            sc.addAnd("tags", SearchCriteria.Op.EQ, tags);
+        }
+        
+        if (isTagged != null) {
+            if (isTagged) {
+                sc.addAnd("tags", SearchCriteria.Op.NNULL);
             } else {
-                sc.addAnd("tags", SearchCriteria.Op.EQ, tags);
+                sc.addAnd("tags", SearchCriteria.Op.NULL);
             }
         }
 
         List<NetworkOfferingVO> offerings = _networkOfferingDao.search(sc, searchFilter);
         Boolean sourceNatSupported = cmd.getSourceNatSupported();
+        List<String> pNtwkTags = new ArrayList<String>();
+        boolean checkForTags = false;
+        if (zone != null) {
+            List<PhysicalNetworkVO> pNtwks = _physicalNetworkDao.listByZoneAndTrafficType(zoneId, TrafficType.Guest);
+            if (pNtwks.size() > 1) {
+                checkForTags = true;
+                //go through tags
+                for (PhysicalNetworkVO pNtwk : pNtwks) {
+                    List<String> pNtwkTag = pNtwk.getTags();
+                    if (pNtwkTag == null || pNtwkTag.isEmpty()) {
+                        throw new CloudRuntimeException("Tags are not defined for physical network in the zone id=" + zoneId);
+                    }
+                    pNtwkTags.addAll(pNtwkTag);
+                }
+            }
+        }
 
         // filter by supported services
         boolean listBySupportedServices = (supportedServicesStr != null && !supportedServicesStr.isEmpty() && !offerings.isEmpty());
@@ -3522,7 +3574,13 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
             for (NetworkOfferingVO offering : offerings) {
                 boolean addOffering = true;
                 List<Service> checkForProviders = new ArrayList<Service>();
-
+                
+                if (checkForTags) {
+                    if (!pNtwkTags.contains(offering.getTags())) {
+                        continue;
+                    }
+                }
+                
                 if (listBySupportedServices) {
                     addOffering = addOffering && _networkMgr.areServicesSupportedByNetworkOffering(offering.getId(), supportedServices);
                 }
@@ -3540,10 +3598,14 @@ public class ConfigurationManagerImpl implements ConfigurationManager, Configura
                 if (sourceNatSupported != null) {
                     addOffering = addOffering && (_networkMgr.areServicesSupportedByNetworkOffering(offering.getId(), Network.Service.SourceNat) == sourceNatSupported);
                 }
+                
+               
 
                 if (addOffering) {
                     supportedOfferings.add(offering);
                 }
+                
+                
             }
 
             return supportedOfferings;

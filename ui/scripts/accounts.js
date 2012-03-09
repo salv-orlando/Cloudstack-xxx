@@ -436,7 +436,7 @@
                 }
               },
 
-              destroy: {
+              remove: {
                 label: 'label.action.delete.account',
                 messages: {
                   confirm: function(args) {
@@ -545,45 +545,49 @@
                 ],
 
                 dataProvider: function(args) {
-                  var accountObj = args.context.accounts[0];
+									$.ajax({
+										url: createURL("listAccounts&id=" + args.context.accounts[0].id),
+										dataType: "json",										
+										success: function(json) {		
+											var accountObj = json.listaccountsresponse.account[0];
 
-                  $.ajax({
-                    url: createURL("listResourceLimits&domainid=" + accountObj.domainid + "&account=" + accountObj.name),
-                    dataType: "json",
-                    async: false,
-                    success: function(json) {
-                      var limits = json.listresourcelimitsresponse.resourcelimit;
-                      if (limits != null) {
-                        for (var i = 0; i < limits.length; i++) {
-                          var limit = limits[i];
-                          switch (limit.resourcetype) {
-                            case "0":
-                              accountObj["vmLimit"] = limit.max;
-                              break;
-                            case "1":
-                              accountObj["ipLimit"] = limit.max;
-                              break;
-                            case "2":
-                              accountObj["volumeLimit"] = limit.max;
-                              break;
-                            case "3":
-                              accountObj["snapshotLimit"] = limit.max;
-                              break;
-                            case "4":
-                              accountObj["templateLimit"] = limit.max;
-                              break;
-                          }
-                        }
-                      }
-                    }
-                  });
-
-                  args.response.success(
-                    {
-                      actionFilter: accountActionfilter,
-                      data: accountObj
-                    }
-                  );
+											$.ajax({
+												url: createURL("listResourceLimits&domainid=" + accountObj.domainid + "&account=" + accountObj.name),
+												dataType: "json",												
+												success: function(json) {
+													var limits = json.listresourcelimitsresponse.resourcelimit;													
+													if (limits != null) {
+														for (var i = 0; i < limits.length; i++) {
+															var limit = limits[i];
+															switch (limit.resourcetype) {
+																case "0":
+																	accountObj["vmLimit"] = limit.max;
+																	break;
+																case "1":
+																	accountObj["ipLimit"] = limit.max;
+																	break;
+																case "2":
+																	accountObj["volumeLimit"] = limit.max;
+																	break;
+																case "3":
+																	accountObj["snapshotLimit"] = limit.max;
+																	break;
+																case "4":
+																	accountObj["templateLimit"] = limit.max;
+																	break;
+															}
+														}
+													}																										
+													args.response.success(
+														{
+															actionFilter: accountActionfilter,
+															data: accountObj 
+														}
+													);							
+												}
+											});											
+										}
+									});		
                 }
               }
             }
@@ -615,16 +619,24 @@
             }
 
             var accountObj = args.context.accounts[0];
-            $.ajax({
-              url: createURL("listUsers&domainid=" + accountObj.domainid + "&account=" + accountObj.name + "&page=" + args.page + "&pagesize=" + pageSize + array1.join("")),
-              dataType: "json",
-              success: function(json) {
-                args.response.success({
-                  actionFilter: userActionfilter,
-                  data: json.listusersresponse.user
-                });
-              }
-            })
+						if(isAdmin() || isDomainAdmin()) {
+							$.ajax({
+								url: createURL("listUsers&domainid=" + accountObj.domainid + "&account=" + accountObj.name + "&page=" + args.page + "&pagesize=" + pageSize + array1.join("")),
+								dataType: "json",
+								success: function(json) {
+									args.response.success({
+										actionFilter: userActionfilter,
+										data: json.listusersresponse.user
+									});
+								}
+							})
+						}
+						else { //normal user doesn't have access listUsers API until Bug 14127 is fixed.
+							args.response.success({
+								actionFilter: userActionfilter,
+								data: accountObj.user
+							});
+						}
           },
           actions: {
             add: {
@@ -882,7 +894,7 @@
                 }
               },
 
-              'delete': {
+              remove: {
                 label: 'label.action.delete.user',
                 messages: {
                   confirm: function(args) {
@@ -897,7 +909,9 @@
                     url: createURL("deleteUser&id=" + args.context.users[0].id),
                     dataType: "json",
                     async: true,
-                    success: function(json) {}
+                    success: function(json) {
+										  args.response.success();
+										}
                   });
                 },
                 notification: {
@@ -964,12 +978,26 @@
                 ],
 
                 dataProvider: function(args) {
-                  args.response.success(
-                    {
-                      actionFilter: userActionfilter,
-                      data:args.context.users[0]
-                    }
-                  );
+								  if(isAdmin() || isDomainAdmin()) {								
+										$.ajax({
+											url: createURL('listUsers'),
+											data: {
+												id: args.context.users[0].id
+											},
+											success: function(json) {
+												args.response.success({
+													actionFilter: userActionfilter,
+													data: json.listusersresponse.user[0]
+												});
+											}
+										});
+									}
+									else { //normal user doesn't have access listUsers API until Bug 14127 is fixed.							
+									  args.response.success({
+											actionFilter: userActionfilter,
+											data: args.context.users[0]
+										});		
+									}									
                 }
               }
             }
@@ -999,10 +1027,13 @@
         else if(jsonObj.state == "disabled" || jsonObj.state == "locked") {
           allowedActions.push("enable");
         }
-        allowedActions.push("destroy");
+        allowedActions.push("remove");
       }
-    }
-    allowedActions.push("updateResourceCount");
+			allowedActions.push("updateResourceCount");
+    }		
+		else if(isDomainAdmin()) {
+      allowedActions.push("updateResourceCount");
+		}	
     return allowedActions;
   }
 
@@ -1018,7 +1049,7 @@
           allowedActions.push("disable");
         if(jsonObj.state == "disabled")
           allowedActions.push("enable");
-        allowedActions.push("delete");
+        allowedActions.push("remove");
       }
     }
     return allowedActions;

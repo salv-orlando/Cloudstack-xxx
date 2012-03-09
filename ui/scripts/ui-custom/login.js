@@ -75,7 +75,7 @@
             });
           },
           error: function(args) {
-            cloudStack.dialog.notice({ message: 'Invalid username and/or password.' });
+            cloudStack.dialog.notice({ message: args });
           }
         }
       });
@@ -89,6 +89,12 @@
       $.cookie('lang', $(this).val());
       document.location.reload();
     });
+
+    // Set default language
+    if (!$.cookie('lang')) {
+      $.cookie('lang', 'en');
+    }
+        
     $languageSelect.val($.cookie('lang'));
   };
 })(jQuery, cloudStack);

@@ -90,6 +90,7 @@ import com.cloud.consoleproxy.ConsoleProxyManager;
 import com.cloud.dc.ClusterVO;
 import com.cloud.dc.DataCenterVO;
 import com.cloud.dc.HostPodVO;
+import com.cloud.dc.Pod;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.dc.dao.DataCenterDao;
 import com.cloud.dc.dao.HostPodDao;
@@ -198,7 +199,7 @@ import com.cloud.vm.dao.UserVmDao;
 import com.cloud.vm.dao.VMInstanceDao;
 
 @Local(value = { StorageManager.class, StorageService.class })
-public class StorageManagerImpl implements StorageManager, StorageService, Manager, ClusterManagerListener {
+public class StorageManagerImpl implements StorageManager, Manager, ClusterManagerListener {
     private static final Logger s_logger = Logger.getLogger(StorageManagerImpl.class);
 
     protected String _name;
@@ -1172,7 +1173,7 @@ public class StorageManagerImpl implements StorageManager, StorageService, Manag
         // Check if there is host up in this cluster
         List<HostVO> allHosts = _resourceMgr.listAllUpAndEnabledHosts(Host.Type.Routing, clusterId, podId, zoneId);
         if (allHosts.isEmpty()) {
-            throw new ResourceUnavailableException("No host up to associate a storage pool with in cluster " + clusterId, HostPodVO.class, podId);
+            throw new ResourceUnavailableException("No host up to associate a storage pool with in cluster " + clusterId, Pod.class, podId);
         }
         URI uri = null;
         try {

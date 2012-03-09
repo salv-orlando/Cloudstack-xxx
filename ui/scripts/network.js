@@ -177,11 +177,12 @@
                   networkOfferingId: {
                     label: 'label.network.offering',
                     validation: { required: true },
-                    select: function(args) {
+										dependsOn: 'zoneId',
+                    select: function(args) {										 
                       $.ajax({
-                        url: createURL('listNetworkOfferings'),
+                        url: createURL('listNetworkOfferings&zoneid=' + args.zoneId),
                         data: {
-                          type: 'Isolated',
+                          guestiptype: 'Isolated',
                           supportedServices: 'SourceNat',
                           specifyvlan: false,
                           state: 'Enabled'
@@ -274,6 +275,7 @@
               async: false,
               success: function(data) {
                 args.response.success({
+								  actionFilter: networkActionfilter,
                   data: data.listnetworksresponse.network
                 });
               },
@@ -493,7 +495,7 @@
                 }
               },
 
-              destroy: {
+              remove: {
                 label: 'label.action.delete.network',
                 messages: {
                   confirm: function(args) {
@@ -512,10 +514,7 @@
                       var jid = json.deletenetworkresponse.jobid;
                       args.response.success(
                         {_custom:
-                         {jobId: jid,
-                          getUpdatedItem: function(json) {
-                            return { state: 'Destroyed' }; //nothing in this network needs to be updated, in fact, this whole template has being deleted
-                          }
+                         {jobId: jid
                          }
                         }
                       );
@@ -683,23 +682,21 @@
                     account: { label: 'label.account' }
                   }
                 ],
-                dataProvider: function(args) {
-                  args.response.success({
-                    actionFilter: function(args) {
-                      if (args.context.networks[0].state == 'Destroyed')
-                        return [];
-
-                      if (args.context.networks[0].type == 'Shared' ||
-                          !$.grep(args.context.networks[0].service, function(service) {
-                            return service.name == 'SourceNat';
-                          }).length) {
-                        return ['edit', 'restart'];
-                      }
-
-                      return args.context.actions;
-                    },
-                    data: args.context.networks[0]
-                  });
+                dataProvider: function(args) {								 					
+								  $.ajax({
+										url: createURL("listNetworks&id=" + args.context.networks[0].id+'&listAll=true'),
+										dataType: "json",
+										async: true,
+										success: function(json) {								  
+											var jsonObj = json.listnetworksresponse.network[0];   
+											args.response.success(
+												{
+													actionFilter: networkActionfilter,
+													data: jsonObj
+												}
+											);		
+										}
+									});			
                 }
               },
 
@@ -1225,7 +1222,9 @@
                       }
                     });
 
-                    ipChangeNotice();
+                    if (args._custom.$detailView.is(':visible')) {
+                      ipChangeNotice();
+                    }
                   }
                 }
               },
@@ -1254,7 +1253,11 @@
                               return ['enableStaticNAT'];
                             };
                           },
-                          onComplete: ipChangeNotice
+                          onComplete: function(args, _custom) {
+                            if (_custom.$detailView.is(':visible')) {
+                              ipChangeNotice();
+                            }
+                          }
                         }
                       });
                     },
@@ -2901,4 +2904,22 @@
       }
     }
   };
+	
+	 var networkActionfilter = function(args) {
+    var jsonObj = args.context.item;
+		var allowedActions = [];
+
+		allowedActions.push('remove');
+		
+		if (jsonObj.type == 'Shared' ||
+				!$.grep(jsonObj.service, function(service) {
+					return service.name == 'SourceNat';
+				}).length) {
+			 allowedActions.push('edit');
+			 allowedActions.push('restart');                        
+		}
+
+		return allowedActions;
+	}
+	
 })(cloudStack, jQuery);

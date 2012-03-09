@@ -583,7 +583,10 @@ public class ConfigurationServerImpl implements ConfigurationServer {
             return;
         }
         String already = _configDao.getValue("ssh.privatekey");
-        String homeDir = Script.runSimpleBashScript("echo ~");
+        String homeDir = Script.runSimpleBashScript("echo ~cloud");
+        if (homeDir == null) {
+        	throw new CloudRuntimeException("Cannot get home directory for account: cloud");
+        }
         if (s_logger.isInfoEnabled()) {
             s_logger.info("Processing updateKeyPairs");
         }
@@ -900,7 +903,7 @@ public class ConfigurationServerImpl implements ConfigurationServer {
         netscalerServiceProviders.put(Service.Lb, Provider.Netscaler);
 
         // The only one diff between 1 and 2 network offerings is that the first one has SG enabled. In Basic zone only
-// first network offering has to be enabled, in Advance zone - the second one
+        // first network offering has to be enabled, in Advance zone - the second one
         Transaction txn = Transaction.currentTxn();
         txn.start();
 

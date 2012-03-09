@@ -679,13 +679,15 @@
                     vlan = args.data.startVlan;
                   else
                     vlan = args.data.startVlan + "-" + args.data.endVlan;
+										
+									var array1 = [];
+                  if(vlan != null && vlan.length > 0) 
+                    array1.push("&vlan=" + todb(vlan));		
+                  if(args.data.tags != null && args.data.tags.length > 0)
+                    array1.push("&tags=" + todb(args.data.tags));									
+										
                   $.ajax({
-                    url: createURL("updatePhysicalNetwork"),
-                    data: {
-                      id: selectedPhysicalNetworkObj.id,
-                      vlan: todb(vlan),
-                      tags: args.data.tags
-                    },
+                    url: createURL("updatePhysicalNetwork&id=" + selectedPhysicalNetworkObj.id + array1.join("")),                   
                     dataType: "json",
                     success: function(json) {
                       var jobId = json.updatephysicalnetworkresponse.jobid;
@@ -723,7 +725,7 @@
                   return hiddenFields;
                 },
                 fields: [                  
-                  {                    
+                  { //updatePhysicalNetwork API               
                     state: { label: 'label.state' },
                     startVlan: {
                       label: 'label.start.vlan',
@@ -733,23 +735,19 @@
                       label: 'label.end.vlan',
                       isEditable: true
                     },
-                    broadcastdomainrange: { label: 'label.broadcast.domain.range' }                    
+										tags: { label: 'Tags', isEditable: true },
+                    broadcastdomainrange: { label: 'label.broadcast.domain.range' }                   
                   },
-                  {
-                    tags: { label: 'Tags', isEditable: true },
+                  { //updateTrafficType API                   
                     xennetworklabel: { label: 'label.xen.traffic.label', isEditable: true },
                     kvmnetworklabel: { label: 'label.kvm.traffic.label', isEditable: true },
                     vmwarenetworklabel: { label: 'label.vmware.traffic.label', isEditable: true }
                   }
                 ],
                 dataProvider: function(args) {                  
-                  var startVlan, endVlan;
-                  var vlan = selectedPhysicalNetworkObj.vlan;
-                  var xentrafficlabel, kvmtrafficlabel, vmwaretrafficlabel;
-
-                  // Get traffic label data
-                  var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Guest');
-
+                  //physical network
+									var startVlan, endVlan;
+                  var vlan = selectedPhysicalNetworkObj.vlan;  
                   if(vlan != null && vlan.length > 0) {
                     if(vlan.indexOf("-") != -1) {
                       var vlanArray = vlan.split("-");
@@ -760,11 +758,15 @@
                       startVlan = vlan;
                     }
                     selectedPhysicalNetworkObj["startVlan"] = startVlan;
-                    selectedPhysicalNetworkObj["endVlan"] = endVlan;
-                    selectedPhysicalNetworkObj["xennetworklabel"] = trafficType.xennetworklabel;
-                    selectedPhysicalNetworkObj["kvmnetworklabel"] = trafficType.kvmnetworklabel;
-                    selectedPhysicalNetworkObj["vmwarenetworklabel"] = trafficType.vmwarenetworklabel;
+                    selectedPhysicalNetworkObj["endVlan"] = endVlan;                    
                   }
+									
+									//traffic type
+									var xentrafficlabel, kvmtrafficlabel, vmwaretrafficlabel;
+                  var trafficType = getTrafficType(selectedPhysicalNetworkObj, 'Guest');
+									selectedPhysicalNetworkObj["xennetworklabel"] = trafficType.xennetworklabel;
+									selectedPhysicalNetworkObj["kvmnetworklabel"] = trafficType.kvmnetworklabel;
+									selectedPhysicalNetworkObj["vmwarenetworklabel"] = trafficType.vmwarenetworklabel;
 
                   args.response.success({
                     actionFilter: function() {
@@ -1045,14 +1047,25 @@
                           networkOfferingId: { 
                             label: 'label.network.offering',
                             dependsOn: 'scope',
-                            select: function(args) {
+                            select: function(args) {                              		                              													
+															$.ajax({
+																url: createURL('listPhysicalNetworks'),
+																data: {
+																	id: args.context.physicalNetworks[0].id
+																},
+																async: false,
+																success: function(json) {		
+																	args.context.physicalNetworks[0] = json.listphysicalnetworksresponse.physicalnetwork[0];													
+																}
+															});		
+
                               var apiCmd = "listNetworkOfferings&state=Enabled&zoneid=" + selectedZoneObj.id; 
-															var array1 = [];
-																																											
+															var array1 = [];																															
+																																	
 															if(physicalNetworkObjs.length > 1) { //multiple physical networks
 															  var guestTrafficTypeTotal = 0;
 															  for(var i = 0; i < physicalNetworkObjs.length; i++) {																  
-																  if(guestTrafficTypeTotal > 1)
+																  if(guestTrafficTypeTotal > 1) //as long as guestTrafficTypeTotal > 1, break for loop, don't need to continue to count. It doesn't matter whether guestTrafficTypeTotal is 2 or 3 or 4 or 5 or more. We only care whether guestTrafficTypeTotal is greater than 1.
 																	  break; 																	
 																  $.ajax({
 																	  url: createURL("listTrafficTypes&physicalnetworkid=" + physicalNetworkObjs[i].id),
@@ -1069,7 +1082,7 @@
 																		}																	
 																	});
 																}															 											
-															
+													
 															  if(guestTrafficTypeTotal > 1) {
 																	if(args.context.physicalNetworks[0].tags != null && args.context.physicalNetworks[0].tags.length > 0) {
 																		array1.push("&tags=" + args.context.physicalNetworks[0].tags);
@@ -1197,7 +1210,10 @@
 
                           if ($form.find('.form-item[rel=subdomainaccess]:visible input:checked').size()) {
                             array1.push("&subdomainaccess=true");
-                          }
+                          } else {
+                            array1.push("&subdomainaccess=false");
+                          }													
+													
 													if($form.find('.form-item[rel=account]').css("display") != "none") {  //account-specific																											
 														array1.push("&account=" + args.data.account);
 														array1.push("&acltype=account");	
@@ -1454,7 +1470,7 @@
 												}												
 											},
 											
-                      'delete': { 
+                      'remove': { 
                         label: 'label.action.delete.network',
                         messages: {
                           confirm: function(args) {
@@ -1995,7 +2011,7 @@
                         }
                       },      
 											
-											'destroy': {
+											'remove': {
 												label: 'label.destroy.router',
 												messages: {
 													confirm: function(args) {
@@ -2174,10 +2190,15 @@
                       details: {
                         title: 'label.details',
                         preFilter: function(args) {
-                          if (!args.context.routers[0].project)
-                              return ['project', 'projectid'];
-
-                          return [];
+												  var hiddenFields = [];
+                          if (!args.context.routers[0].project) {
+													  hiddenFields.push('project');
+														hiddenFields.push('projectid');                              
+                          }													
+													if(selectedZoneObj.networktype == 'Basic') {
+													  hiddenFields.push('publicip'); //In Basic zone, guest IP is public IP. So, publicip is not returned by listRouters API. Only guestipaddress is returned by listRouters API.
+											    }
+                          return hiddenFields;
                         },
                         fields: [
                           {
@@ -2503,7 +2524,7 @@
                 },
                 messages: {
 								  confirm: function(args) {
-									  return 'confirm.shutdown.provider';
+									  return 'message.confirm.shutdown.provider';
 									},
                   notification: function(args) { 
 									  return 'label.shutdown.provider'; 
@@ -3435,7 +3456,8 @@
                         indicator: {
                           'Running': 'on',
                           'Stopped': 'off',
-                          'Error': 'off'
+                          'Error': 'off',
+                          'Destroyed': 'off'
                         }
                       }
                     },
@@ -3578,7 +3600,7 @@
                           }
                         },
 
-                        'delete': {
+                        destroy: {
                           label: 'label.action.destroy.systemvm',
                           messages: {
                             confirm: function(args) {
@@ -3597,13 +3619,10 @@
                                 var jid = json.destroysystemvmresponse.jobid;
                                 args.response.success({
                                   _custom: {
-                                    jobId: jid,
-                                    getUpdatedItem: function(json) {
-                                      //return {}; //nothing in this systemVM needs to be updated, in fact, this whole systemVM has being destroyed
+                                    getUpdatedItem: function() {
+                                      return { state: 'Destroyed' };
                                     },
-                                    getActionFilter: function() {
-                                      return systemvmActionfilter;
-                                    }
+                                    jobId: jid
                                   }
                                 });
                               }
@@ -4399,7 +4418,7 @@
                     validation: { required: true }
                   },
                   reservedSystemGateway: {
-                    label: 'reserved.system.gateway',
+                    label: 'label.reserved.system.gateway',
                     validation: { required: true }
                   },
                   reservedSystemNetmask: {
@@ -5545,9 +5564,6 @@
               'delete': {  
                 label: 'label.action.remove.host' ,
                 messages: {
-                  confirm: function(args) {
-                    return 'message.action.remove.host';
-                  },                 
                   notification: function(args) {
                     return 'label.action.remove.host';
                   }
@@ -5559,6 +5575,7 @@
                 },
                 createForm: {
                   title: 'label.action.remove.host',
+                  desc: 'message.action.remove.host',
                   fields: {
                     isForced: {
                       label: 'force.remove',
@@ -5599,7 +5616,6 @@
                     id: { label: 'label.id' },
                     resourcestate: { label: 'label.resource.state' },
                     state: { label: 'label.state' },
-                    type: { label: 'label.type' },
                     zonename: { label: 'label.zone' },
                     podname: { label: 'label.pod' },
                     clustername: { label: 'label.cluster' },
@@ -6312,7 +6328,18 @@
           section: 'seconary-storage',
           fields: {
             name: { label: 'label.name' },
-						created: { label: 'label.created', converter: cloudStack.converters.toLocalDate }
+						created: { label: 'label.created', converter: cloudStack.converters.toLocalDate },
+            resourcestate: {
+              label: 'label.state',
+              indicator: {
+                'Enabled': 'on',
+                'Disabled': 'off',
+                'Destroyed': 'off'
+              },
+              converter: function(str) {
+                return 'state.' + str;
+              }
+            }
           },
 
           dataProvider: function(args) {
@@ -6401,7 +6428,7 @@
           detailView: {
             name: 'Secondary storage details',
             actions: {
-              'delete': {
+              destroy: {
                 label: 'label.action.delete.secondary.storage' ,  
                 messages: {
                   confirm: function(args) {
@@ -6417,12 +6444,12 @@
                     dataType: "json",
                     async: true,
                     success: function(json) {
-                      args.response.success({data:{}});
+                      args.response.success();
                     }
                   });
                 },
                 notification: {
-                  poll: function(args) { args.complete(); }
+                  poll: function(args) { args.complete({ data: { resourcestate: 'Destroyed' } }); }
                 }
               }
 
@@ -7249,7 +7276,7 @@
   var secondarystorageActionfilter = function(args) {
     var jsonObj = args.context.item;
     var allowedActions = [];
-    allowedActions.push("delete");
+    allowedActions.push("destroy");
     return allowedActions;
   }
 
@@ -7283,7 +7310,7 @@
     }
     else if (jsonObj.state == 'Stopped') {
       allowedActions.push("start");
-			allowedActions.push("destroy");
+	  allowedActions.push("remove");
       allowedActions.push("changeService");
     }
     return allowedActions;
@@ -7296,17 +7323,17 @@
     if (jsonObj.state == 'Running') {
       allowedActions.push("stop");
       allowedActions.push("restart");
-      allowedActions.push("delete");  //destroy
+      allowedActions.push("destroy");  //destroy
       allowedActions.push("viewConsole");
       if (isAdmin())
         allowedActions.push("migrate");
     }
     else if (jsonObj.state == 'Stopped') {
       allowedActions.push("start");
-      allowedActions.push("delete");  //destroy
+      allowedActions.push("destroy");  //destroy
     }
     else if (jsonObj.state == 'Error') {
-      allowedActions.push("delete");  //destroy
+      allowedActions.push("destroy");  //destroy
     }
     return allowedActions;
   }
