@@ -621,7 +621,8 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
             //Invoke plugin to setup the bridge which will be used by this network
             String bridge = nw.getBridge(conn);
             String result = callHostPlugin(conn, "ovstunnel", "setup_ovs_bridge", "bridge", bridge,
-            							   "key", String.valueOf(networkId));
+            							   "key", String.valueOf(networkId),
+            							   "xs_nw_uuid", nw.getUuid(conn));
             String[] res = result.split(":");
             if (res.length != 2 || !res[0].equalsIgnoreCase("SUCCESS")) {
             	//TODO: Should make this error not fatal?
@@ -4711,7 +4712,7 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
             s_logger.debug("### About to create tunnel network");
         	Network nw = createTunnelNetwork(conn, cmd.getNetworkId());
             if (nw == null) {
-            	s_logger.debug("### SOMETHING WENT WRONG");
+            	s_logger.debug("### SOMETHING WENT WRONG DURING NETWORK SETUP");
                 return new OvsCreateTunnelAnswer(cmd, false, "Cannot create network", bridge);
             }
             
@@ -4727,7 +4728,7 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
                 return new OvsCreateTunnelAnswer(cmd, false, result, bridge);
             }
         } catch (Exception e) {
-        	s_logger.debug("### SOMETHING WENT WRONG");
+        	s_logger.debug("### SOMETHING WENT WRONG DURING TUNNEL SETUP");
         	s_logger.warn("caught execption when creating ovs tunnel", e);
             return new OvsCreateTunnelAnswer(cmd, false, e.getMessage(), bridge);
         }

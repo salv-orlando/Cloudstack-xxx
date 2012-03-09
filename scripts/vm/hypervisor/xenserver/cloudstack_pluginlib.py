@@ -32,21 +32,29 @@ def setup_logging(log_file=None):
     verbose = False
     log_format = DEFAULT_LOG_FORMAT
     log_date_format = DEFAULT_LOG_DATE_FORMAT
-
     # try to read plugin configuration file
     if os.path.exists(PLUGIN_CONFIG_PATH):
         config = ConfigParser.ConfigParser()
-        config.read(file)
+        config.read(PLUGIN_CONFIG_PATH)
         try:
-            debug = config.getboolean('LOGGING','debug')
-            verbose = config.getboolean('LOGGING','verbose')
-            log_format = config.get('LOGGING','log_format')
-            log_date_format = config.get('LOGGING','log_date_format')
-            log_file_2 = config.get('LOGGING','log_file')
+            options = config.options('LOGGING')
+            if 'debug' in options:
+                debug = config.getboolean('LOGGING','debug')
+            if 'verbose' in options:
+                verbose = config.getboolean('LOGGING','verbose')
+            if 'format' in options:
+                log_format = config.get('LOGGING','format')
+            if 'date_format' in options:
+                log_date_format = config.get('LOGGING','date_format')
+            if 'file' in options:
+                log_file_2 = config.get('LOGGING','file')
         except ValueError:
             # configuration file contained invalid attributes
             # ignore them
-            pass 
+            pass
+        except ConfigParser.NoSectionError:
+            # Missing 'Logging' section in configuration file
+            pass
     
     root_logger = logging.root
     if debug:
@@ -60,7 +68,6 @@ def setup_logging(log_file=None):
     log_filename = log_file or log_file_2 or DEFAULT_LOG_FILE
     
     logfile_handler = logging.FileHandler(log_filename)
-    logfile_handler.setFormatter(formatter)
     logfile_handler.setFormatter(formatter)
     root_logger.addHandler(logfile_handler)
 
