@@ -20,7 +20,7 @@ OVS_PID_PATH = "/var/run/openvswitch/ovs-vswitchd.pid"
 OVS_DAEMON_PATH = "ovs-vswitchd"
 VSCTL_PATH='/usr/bin/ovs-vsctl'
 OFCTL_PATH='/usr/bin/ovs-ofctl'
-
+XE_PATH=  "/opt/xensource/bin/xe"
 
 class PluginError(Exception):
     """Base Exception class for all plugin errors."""

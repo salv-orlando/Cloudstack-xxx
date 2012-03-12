@@ -140,6 +140,8 @@ def setup_ovs_bridge(session, args):
 		xs_nw_uuid = lib.do_cmd([xePath, "network-list",
 							    "bridge=%s" % bridge, "--minimal"])
 		lib.do_cmd([xePath,"network-param-set", "uuid=%s" % xs_nw_uuid,
+				   "other-config:is-ovs-tun-network=True"])
+		lib.do_cmd([xePath,"network-param-set", "uuid=%s" % xs_nw_uuid,
 				   "other-config:ovs-setup=True"])
 			
 	logging.debug("Setup_ovs_bridge complete with result:%s" %result)
