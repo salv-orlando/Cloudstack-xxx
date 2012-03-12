@@ -93,19 +93,4 @@ public class OvsGuestNetworkGuru extends GuestNetworkGuru {
          return implemented;
 	}
 	
-    @Override
-    public void reserve(NicProfile nic, Network config, VirtualMachineProfile<? extends VirtualMachine> vm, DeployDestination dest, ReservationContext context)
-            throws InsufficientVirtualNetworkCapcityException, InsufficientAddressCapacityException {
-        assert (nic.getReservationStrategy() == ReservationStrategy.Start) : "What can I do for nics that are not allocated at start? ";
-		if (!_ovsNetworkMgr.isOvsNetworkEnabled()&& !_ovsTunnelMgr.isOvsTunnelEnabled()) {
-			 return;
-		}
-		//if (!config.isSpecifiedCidr()) {
-		//	throw new CloudRuntimeException("Unable to implement network " + config.getId() + 
-		//			" as the CIDR has not been specified ");
-		//}
-		s_logger.debug("### Reserving NIC: " + nic.getId() + " for network:" + config.getId() + " in OVS Guest Network Guru");
-        super.reserve(nic, config, vm, dest, context);
-    }	
-	
 }

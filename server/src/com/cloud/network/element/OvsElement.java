@@ -117,7 +117,7 @@ public class OvsElement extends AdapterBase implements NetworkElement {
             return true;
         }
 
-        _ovsTunnelMgr.CheckAndDestroyTunnel(vm.getVirtualMachine());
+        _ovsTunnelMgr.CheckAndDestroyTunnel(vm.getVirtualMachine(), network);
         return true;
     }
 

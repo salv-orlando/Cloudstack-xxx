@@ -26,8 +26,8 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 
 @Entity
-@Table(name=("ovs_tunnel_account"))
-public class OvsTunnelAccountVO {
+@Table(name=("ovs_tunnel_network"))
+public class OvsTunnelNetworkVO {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name = "id")
@@ -42,8 +42,8 @@ public class OvsTunnelAccountVO {
 	@Column(name = "key")
 	private int key;
 	
-	@Column(name = "account")
-	private long account;
+	@Column(name = "network_id")
+	private long networkId;
 	
 	@Column(name = "port_name")
     private String portName;
@@ -51,15 +51,15 @@ public class OvsTunnelAccountVO {
 	@Column(name = "state")
 	private String state;
 	
-	public OvsTunnelAccountVO() {
+	public OvsTunnelNetworkVO() {
 		
 	}
 	
-	public OvsTunnelAccountVO(long from, long to, int key, long account) {
+	public OvsTunnelNetworkVO(long from, long to, int key, long networkId) {
 		this.from = from;
 		this.to = to;
 		this.key = key;
-		this.account = account;
+		this.networkId = networkId;
 		this.portName = "[]";
 		this.state = "FAILED";
 	}
@@ -84,8 +84,8 @@ public class OvsTunnelAccountVO {
 		return id;
 	}
 	
-	public long getAccount() {
-		return account;
+	public long getNetworkId() {
+		return networkId;
 	}
 	
 	public String getState() {

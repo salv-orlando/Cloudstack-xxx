@@ -181,6 +181,7 @@ import com.cloud.network.ovs.OvsCreateGreTunnelCommand;
 import com.cloud.network.ovs.OvsCreateTunnelAnswer;
 import com.cloud.network.ovs.OvsCreateTunnelCommand;
 import com.cloud.network.ovs.OvsDeleteFlowCommand;
+import com.cloud.network.ovs.OvsDestroyBridgeCommand;
 import com.cloud.network.ovs.OvsDestroyTunnelCommand;
 import com.cloud.network.ovs.OvsSetTagAndFlowAnswer;
 import com.cloud.network.ovs.OvsSetTagAndFlowCommand;
@@ -489,6 +490,8 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
             return execute((NetworkRulesSystemVmCommand)cmd);
         } else if (clazz == OvsCreateTunnelCommand.class) {
             return execute((OvsCreateTunnelCommand)cmd);
+        } else if (clazz == OvsDestroyBridgeCommand.class) {
+            return execute((OvsDestroyBridgeCommand)cmd);
         } else if (clazz == OvsDestroyTunnelCommand.class) {
             return execute((OvsDestroyTunnelCommand)cmd);
         } else if (clazz == UpdateHostPasswordCommand.class) {
@@ -636,7 +639,45 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         }
     }
 
-
+    private synchronized Network findTunnelNetwork(Connection conn, long networkId) {
+        try {
+            String nwName = "OVSTunnel" + networkId;
+            Network nw = null;
+            Set<Network> networks = Network.getByNameLabel(conn, nwName);
+            if (networks.size() == 0) {
+            	String errorMessage = "Unable to find OVS bridge for network:" + networkId; 
+                s_logger.error(errorMessage);
+                throw new CloudRuntimeException(errorMessage);
+            } else {
+                nw = networks.iterator().next();
+            }
+            s_logger.debug("### Xen Server network for tunnels created:" + nwName);
+            return nw;
+        } catch (Exception e) {
+            s_logger.warn("findTunnelNetwork failed:", e);
+            return null;
+        }
+    }
+    
+    private synchronized void destroyTunnelNetwork(Connection conn, long networkId) {
+    	try {
+    		Network nw = findTunnelNetwork(conn, networkId);
+            String bridge = nw.getBridge(conn);
+            String result = callHostPlugin(conn, "ovstunnel", "destroy_ovs_bridge", "bridge", bridge);
+            String[] res = result.split(":");
+            if (res.length != 2 || !res[0].equalsIgnoreCase("SUCCESS")) {
+            	//TODO: Should make this error not fatal?
+            	//Can Concurrent VM shutdown/migration/reboot events can cause this method
+            	//to be executed on a bridge which has already been removed?
+            	throw new CloudRuntimeException("Unable to remove OVS bridge " + bridge + ":" + res);
+            }
+            return;
+    	} catch (Exception e) {
+            s_logger.warn("destroyTunnelNetwork failed:", e);
+            return;
+    	}
+    }
+    
     protected Network getNetwork(Connection conn, NicTO nic) throws XenAPIException, XmlRpcException {
         String name = nic.getName();
         XsLocalNetwork network = getNativeNetworkForTraffic(conn, nic.getType(), name);
@@ -660,8 +701,8 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
                 _isOvs = true;
                 return setupvSwitchNetwork(conn);
             } else {
-                long account = Long.parseLong(nic.getBroadcastUri().getHost());
-                return createTunnelNetwork(conn, account);
+                long networkId = Long.parseLong(nic.getBroadcastUri().getHost());
+                return findTunnelNetwork(conn, networkId);
             }
         } else if (nic.getBroadcastType() == BroadcastDomainType.Storage) {
         	URI broadcastUri = nic.getBroadcastUri();
@@ -4678,16 +4719,28 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         return Boolean.valueOf(callHostPlugin(conn, "vmops", "can_bridge_firewall", "host_uuid", _host.uuid, "instance", _instance));
     }
 
+    private Answer execute(OvsDestroyBridgeCommand cmd) {
+        Connection conn = getConnection();
+        s_logger.debug("### About to destroy OVS bridge");
+        destroyTunnelNetwork(conn, cmd.getNetworkId());
+        s_logger.debug("### Bridge destroyed");
+    	return null;
+    }
+    
     private Answer execute(OvsDestroyTunnelCommand cmd) {
         Connection conn = getConnection();
+        s_logger.debug("### About to destroy tunnel network");
         try {
-            Network nw = createTunnelNetwork(conn, cmd.getAccount());
+        	Network nw = findTunnelNetwork(conn, cmd.getNetworkId());
             if (nw == null) {
+            	s_logger.warn("### Unable to find tunnel network");
                 return new Answer(cmd, false, "No network found");
             }
 
             String bridge = nw.getBridge(conn);
+            s_logger.debug("### About to remove tunnel named:" + cmd.getInPortName());
             String result = callHostPlugin(conn, "ovstunnel", "destroy_tunnel", "bridge", bridge, "in_port", cmd.getInPortName());
+            s_logger.debug("### Tunnel removed");
             if (result.equalsIgnoreCase("SUCCESS")) {
                 return new Answer(cmd, true, result);
             } else {

@@ -29,62 +29,62 @@ import com.cloud.utils.db.SearchCriteria.Op;
 
 @Local(value = { OvsTunnelAccountDao.class })
 public class OvsTunnelAccountDaoImpl extends
-		GenericDaoBase<OvsTunnelAccountVO, Long> implements OvsTunnelAccountDao {
+		GenericDaoBase<OvsTunnelNetworkVO, Long> implements OvsTunnelAccountDao {
 
-	protected final SearchBuilder<OvsTunnelAccountVO> fromToAccountSearch;
-	protected final SearchBuilder<OvsTunnelAccountVO> fromAccountSearch;
-	protected final SearchBuilder<OvsTunnelAccountVO> toAccountSearch;
+	protected final SearchBuilder<OvsTunnelNetworkVO> fromToNetworkSearch;
+	protected final SearchBuilder<OvsTunnelNetworkVO> fromNetworkSearch;
+	protected final SearchBuilder<OvsTunnelNetworkVO> toNetworkSearch;
 	
 	public OvsTunnelAccountDaoImpl() {
-		fromToAccountSearch = createSearchBuilder();
-		fromToAccountSearch.and("from", fromToAccountSearch.entity().getFrom(), Op.EQ);
-		fromToAccountSearch.and("to", fromToAccountSearch.entity().getTo(), Op.EQ);
-		fromToAccountSearch.and("account", fromToAccountSearch.entity().getAccount(), Op.EQ);
-		fromToAccountSearch.done();
+		fromToNetworkSearch = createSearchBuilder();
+		fromToNetworkSearch.and("from", fromToNetworkSearch.entity().getFrom(), Op.EQ);
+		fromToNetworkSearch.and("to", fromToNetworkSearch.entity().getTo(), Op.EQ);
+		fromToNetworkSearch.and("network_id", fromToNetworkSearch.entity().getNetworkId(), Op.EQ);
+		fromToNetworkSearch.done();
 		
-		fromAccountSearch = createSearchBuilder();
-		fromAccountSearch.and("from", fromAccountSearch.entity().getFrom(), Op.EQ);
-		fromAccountSearch.and("account", fromAccountSearch.entity().getAccount(), Op.EQ);
-		fromAccountSearch.done();
+		fromNetworkSearch = createSearchBuilder();
+		fromNetworkSearch.and("from", fromNetworkSearch.entity().getFrom(), Op.EQ);
+		fromNetworkSearch.and("network_id", fromNetworkSearch.entity().getNetworkId(), Op.EQ);
+		fromNetworkSearch.done();
 		
-		toAccountSearch = createSearchBuilder();
-		toAccountSearch.and("to", toAccountSearch.entity().getTo(), Op.EQ);
-		toAccountSearch.and("account", toAccountSearch.entity().getAccount(), Op.EQ);
-		toAccountSearch.done();
+		toNetworkSearch = createSearchBuilder();
+		toNetworkSearch.and("to", toNetworkSearch.entity().getTo(), Op.EQ);
+		toNetworkSearch.and("network_id", toNetworkSearch.entity().getNetworkId(), Op.EQ);
+		toNetworkSearch.done();
 	}
 	
 	@Override
-	public OvsTunnelAccountVO getByFromToAccount(long from, long to,
-			long account) {
-		SearchCriteria<OvsTunnelAccountVO> sc = fromToAccountSearch.create();
+	public OvsTunnelNetworkVO getByFromToNetwork(long from, long to,
+			long networkId) {
+		SearchCriteria<OvsTunnelNetworkVO> sc = fromToNetworkSearch.create();
         sc.setParameters("from", from);
         sc.setParameters("to", to);
-        sc.setParameters("account", account);
+        sc.setParameters("account", networkId);
 		return findOneBy(sc);
 	}
 
     @Override
-    public void removeByFromAccount(long from, long account) {
-        SearchCriteria<OvsTunnelAccountVO> sc = fromAccountSearch.create();
+    public void removeByFromNetwork(long from, long networkId) {
+        SearchCriteria<OvsTunnelNetworkVO> sc = fromNetworkSearch.create();
         sc.setParameters("from", from);
-        sc.setParameters("account", account);
+        sc.setParameters("network_id", networkId);
         remove(sc);
     }
 
     @Override
-    public List<OvsTunnelAccountVO> listByToAccount(long to, long account) {
-        SearchCriteria<OvsTunnelAccountVO> sc = toAccountSearch.create();
+    public List<OvsTunnelNetworkVO> listByToNetwork(long to, long networkId) {
+        SearchCriteria<OvsTunnelNetworkVO> sc = toNetworkSearch.create();
         sc.setParameters("to", to);
-        sc.setParameters("account", account);
+        sc.setParameters("network_id", networkId);
         return listBy(sc);
     }
 
     @Override
-    public void removeByFromToAccount(long from, long to, long account) {
-        SearchCriteria<OvsTunnelAccountVO> sc = fromToAccountSearch.create();
+    public void removeByFromToNetwork(long from, long to, long networkId) {
+        SearchCriteria<OvsTunnelNetworkVO> sc = fromToNetworkSearch.create();
         sc.setParameters("from", from);
         sc.setParameters("to", to);
-        sc.setParameters("account", account);
+        sc.setParameters("networkId", networkId);
         remove(sc);
     }
 
