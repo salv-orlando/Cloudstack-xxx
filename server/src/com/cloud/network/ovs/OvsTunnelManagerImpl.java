@@ -40,7 +40,7 @@ import com.cloud.deploy.DeployDestination;
 import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.network.Network;
-import com.cloud.network.ovs.dao.OvsTunnelAccountDao;
+import com.cloud.network.ovs.dao.OvsTunnelNetworkDao;
 import com.cloud.network.ovs.dao.OvsTunnelNetworkVO;
 import com.cloud.network.ovs.dao.OvsTunnelDao;
 import com.cloud.utils.Pair;
@@ -73,7 +73,7 @@ public class OvsTunnelManagerImpl implements OvsTunnelManager {
 	@Inject HostDao _hostDao;
 	@Inject UserVmDao _userVmDao;
 	@Inject DomainRouterDao _routerDao;
-	@Inject OvsTunnelAccountDao _tunnelNetworkDao;
+	@Inject OvsTunnelNetworkDao _tunnelNetworkDao;
 	@Inject AgentManager _agentMgr;
 	
 	@Override

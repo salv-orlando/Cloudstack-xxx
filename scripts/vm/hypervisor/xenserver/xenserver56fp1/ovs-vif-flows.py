@@ -8,17 +8,9 @@ import sys
 
 import cloudstack_pluginlib as pluginlib
 
-#TODO this does not work with OVS shipped in XS56FP1
-
-def clear_flows(bridge, vif_ofport):
-    # Leverage out_port option for removing flows based on actions
-    # FIXME: this will remove the whole flow!!!
-    pluginlib.del_flows(bridge, out_port=vif_ofport)
-
-
-def apply_flows(bridge, vif_ofport):
-    action = "output:%s," % vif_ofport
-    # If we do this in this way this will just do bad things as it will replace a flow, not append an action
+def apply_flows(bridge, vif_ofports):
+    action = "".join("output:%s," %ofport
+                for ofport in vif_ofports)[:-1]
     pluginlib.add_flow(bridge, priority=1100,
                        dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
     pluginlib.add_flow(bridge, priority=1100,
@@ -38,16 +30,20 @@ def main(command, vif_raw):
     vlan = pluginlib.do_cmd([pluginlib.VSCTL_PATH, 'br-to-vlan', bridge])
     if vlan != '0':
             # We need the REAL bridge name
-            bridge = pluginlib.do_cmd([pluginlib.VSCTL_PATH, 'br-to-parent', bridge])
-    vif_ofport = pluginlib.do_cmd([pluginlib.VSCTL_PATH, 'get', 'Interface',
-                                   vif, 'ofport'])
-
-    if command == 'offline':
-        # I haven't found a way to clear only IPv4 or IPv6 rules.
-        clear_flows(bridge, vif_ofport)
-
-    if command == 'online':
-        apply_flows(bridge,  vif_ofport)
+            bridge = pluginlib.do_cmd([pluginlib.VSCTL_PATH,
+                                       'br-to-parent', bridge])
+    # For the OVS version shipped with XS56FP1 we need to retrieve
+    # the ofport number for all interfaces
+    vsctl_output = pluginlib.do_cmd([pluginlib.VSCTL_PATH,
+                                     'list-ports', bridge])
+    vifs = vsctl_output.split('\n')
+    vif_ofports = []
+    for vif in vifs:
+        vif_ofports.append(pluginlib.do_cmd([pluginlib.VSCTL_PATH, 'get',
+                                             'Interface', vif, 'ofport']))
+    # So regardless of whether the VIF is brought online or offline we 
+    # will always execute the same action
+    apply_flows(bridge,  vif_ofports)    
 
 
 if __name__ == "__main__":

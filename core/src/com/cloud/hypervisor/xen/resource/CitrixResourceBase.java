@@ -634,14 +634,12 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
             //Invoke plugin to setup the bridge which will be used by this network
             String bridge = nw.getBridge(conn);
             Map<String,String> nwOtherConfig = nw.getOtherConfig(conn);
-            String ovsConfigured = nwOtherConfig.get("ovs_setup");
-            if (ovsConfigured == null) {
+            String ovsConfigured = nwOtherConfig.get("ovs-setup");
+            if (ovsConfigured == null || ovsConfigured.equalsIgnoreCase("false")) {
 	            String result = callHostPlugin(conn, "ovstunnel", "setup_ovs_bridge", "bridge", bridge,
 	            							   "key", String.valueOf(networkId),
 	            							   "xs_nw_uuid", nw.getUuid(conn));
 	            //Note down the fact that the ovs bridge has been setup
-	            //TODO: Do this in the plugin - save a call
-	            nw.addToOtherConfig(conn, "ovs_setup", "True");
 	            String[] res = result.split(":");
 	            if (res.length != 2 || !res[0].equalsIgnoreCase("SUCCESS")) {
 	            	//TODO: Should make this error not fatal?

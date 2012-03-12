@@ -78,7 +78,7 @@ import com.cloud.network.lb.dao.ElasticLbVmMapDaoImpl;
 import com.cloud.network.ovs.OvsNetworkManagerImpl;
 import com.cloud.network.ovs.OvsTunnelManagerImpl;
 import com.cloud.network.ovs.dao.GreTunnelDaoImpl;
-import com.cloud.network.ovs.dao.OvsTunnelAccountDaoImpl;
+import com.cloud.network.ovs.dao.OvsTunnelNetworkDaoImpl;
 import com.cloud.network.ovs.dao.OvsTunnelDaoImpl;
 import com.cloud.network.ovs.dao.OvsWorkDaoImpl;
 import com.cloud.network.ovs.dao.VlanMappingDaoImpl;
@@ -256,7 +256,7 @@ public class ResourceManagerTest extends TestCase {
 		_locator.addDao("VmFlowLogDao", VmFlowLogDaoImpl.class);
 		_locator.addDao("GreTunnelDao", GreTunnelDaoImpl.class);
 		_locator.addDao("OvsTunnelDao", OvsTunnelDaoImpl.class);
-		_locator.addDao("OvsTunnelAccountDao", OvsTunnelAccountDaoImpl.class);
+		_locator.addDao("OvsTunnelAccountDao", OvsTunnelNetworkDaoImpl.class);
 		_locator.addDao("StoragePoolWorkDao", StoragePoolWorkDaoImpl.class);
 		_locator.addDao("HostTagsDao", HostTagsDaoImpl.class);
 		_locator.addDao("NetworkDomainDao", NetworkDomainDaoImpl.class);

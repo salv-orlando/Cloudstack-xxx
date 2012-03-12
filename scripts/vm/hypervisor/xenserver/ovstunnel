@@ -135,18 +135,42 @@ def setup_ovs_bridge(session, args):
 			result = "SUCCESS:%s" %bridge 
 		else:
 			result = "FAILURE:%s" %res
+		# Finally note in the xenapi network object that the network has 
+		# been configured
+		xs_nw_uuid = lib.do_cmd([xePath, "network-list",
+							    "bridge=%s" % bridge, "--minimal"])
+		lib.do_cmd([xePath,"network-param-set", "uuid=%s" % xs_nw_uuid,
+				   "other-config:ovs-setup=True"])
+			
 	logging.debug("Setup_ovs_bridge complete with result:%s" %result)
 	return result
 
 
 @echo
-def destroy_ovs_bridge(session, args):#
+def destroy_ovs_bridge(session, args):
 	bridge = args.pop("bridge")
 	res = lib.check_switch()
 	# TODO: Must complete this routine
 	if res != "SUCCESS":
 		return res
+	res = lib.do_cmd([lib.VSCTL_PATH, "del-br", bridge])
+	logging.debug("Bridge has been manually removed:%s" %res)
+	if res:
+		result = "FAILURE:%s" %res
+	else:
+		# Note that the bridge has been removed on xapi network object
+		xs_nw_uuid = lib.do_cmd([xePath, "network-list",
+							    "bridge=%s" % bridge, "--minimal"])
+		lib.do_cmd([xePath,"network-param-set", "uuid=%s" % xs_nw_uuid,
+				   "other-config:ovs-setup=False"])
+		if res:
+			result = "SUCCESS:%s" %bridge 
+		else:
+			result = "FAILURE:%s" %res
 
+	logging.debug("Destroy_ovs_bridge completed with result:%s" %result)
+	return result
+	
 	
 @echo
 def create_tunnel(session, args):

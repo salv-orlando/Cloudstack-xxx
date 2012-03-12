@@ -27,15 +27,15 @@ import com.cloud.utils.db.SearchBuilder;
 import com.cloud.utils.db.SearchCriteria;
 import com.cloud.utils.db.SearchCriteria.Op;
 
-@Local(value = { OvsTunnelAccountDao.class })
-public class OvsTunnelAccountDaoImpl extends
-		GenericDaoBase<OvsTunnelNetworkVO, Long> implements OvsTunnelAccountDao {
+@Local(value = { OvsTunnelNetworkDao.class })
+public class OvsTunnelNetworkDaoImpl extends
+		GenericDaoBase<OvsTunnelNetworkVO, Long> implements OvsTunnelNetworkDao {
 
 	protected final SearchBuilder<OvsTunnelNetworkVO> fromToNetworkSearch;
 	protected final SearchBuilder<OvsTunnelNetworkVO> fromNetworkSearch;
 	protected final SearchBuilder<OvsTunnelNetworkVO> toNetworkSearch;
 	
-	public OvsTunnelAccountDaoImpl() {
+	public OvsTunnelNetworkDaoImpl() {
 		fromToNetworkSearch = createSearchBuilder();
 		fromToNetworkSearch.and("from", fromToNetworkSearch.entity().getFrom(), Op.EQ);
 		fromToNetworkSearch.and("to", fromToNetworkSearch.entity().getTo(), Op.EQ);
@@ -59,7 +59,7 @@ public class OvsTunnelAccountDaoImpl extends
 		SearchCriteria<OvsTunnelNetworkVO> sc = fromToNetworkSearch.create();
         sc.setParameters("from", from);
         sc.setParameters("to", to);
-        sc.setParameters("account", networkId);
+        sc.setParameters("network_id", networkId);
 		return findOneBy(sc);
 	}
 
