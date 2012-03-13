@@ -292,26 +292,29 @@ public class OvsTunnelManagerImpl implements OvsTunnelManager {
 
     @Override
     public void CheckAndDestroyTunnel(VirtualMachine vm, Network nw) {
-        if (!_isEnabled) {
+        s_logger.debug("### DESTROYING YOUR TUNNELS!");
+    	if (!_isEnabled) {
             return;
         }
         
         List<UserVmVO> userVms = _userVmDao.listByAccountIdAndHostId(vm.getAccountId(), vm.getHostId());
+        s_logger.debug("### User Vms:" + userVms.size());
         if (vm.getType() == VirtualMachine.Type.User) {
             if (userVms.size() > 1) {
                 return;
             }
             
-            List<DomainRouterVO> routers = _routerDao.findBy(vm.getAccountId(), vm.getDataCenterIdToDeployIn());
+            List<DomainRouterVO> routers = _routerDao.findByNetwork(nw.getId());
             for (DomainRouterVO router : routers) {
                 if (router.getHostId() == vm.getHostId()) {
-                    return;
+                	s_logger.debug("### Not destroying because on same host as router");
+                	return;
                 }
             }
         } else if (vm.getType() == VirtualMachine.Type.DomainRouter && userVms.size() != 0) {
                 return;
         }
-
+        s_logger.debug("### I WILL DESTROYYY");
         try {
             /* Now we are last one on host, destroy the bridge with all 
              * the tunnels for this network  */

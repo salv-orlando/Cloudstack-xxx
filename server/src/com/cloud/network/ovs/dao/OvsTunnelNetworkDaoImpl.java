@@ -84,7 +84,7 @@ public class OvsTunnelNetworkDaoImpl extends
         SearchCriteria<OvsTunnelNetworkVO> sc = fromToNetworkSearch.create();
         sc.setParameters("from", from);
         sc.setParameters("to", to);
-        sc.setParameters("networkId", networkId);
+        sc.setParameters("network_id", networkId);
         remove(sc);
     }
 

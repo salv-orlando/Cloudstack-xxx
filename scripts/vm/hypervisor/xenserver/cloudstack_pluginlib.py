@@ -141,10 +141,13 @@ def check_switch ():
 
 
 def _build_flow_expr(**kwargs):
-    flow = "hard_timeout=%s,idle_timeout=%s,priority=%s"\
-            % (kwargs.get('hard_timeout','0'),
-               kwargs.get('idle_timeout','0'),
-               kwargs.get('priority','1'))
+    is_delete_expr = kwargs.get('delete', False) 
+    flow = ""
+    if not is_delete_expr:
+        flow = "hard_timeout=%s,idle_timeout=%s,priority=%s"\
+                % (kwargs.get('hard_timeout','0'),
+                   kwargs.get('idle_timeout','0'),
+                   kwargs.get('priority','1'))
     in_port = 'in_port' in kwargs and ",in_port=%s" % kwargs['in_port'] or ''
     dl_src = 'dl_src' in kwargs and ",dl_src=%s" % kwargs['dl_src'] or ''
     dl_dst = 'dl_dst' in kwargs and ",dl_dst=%s" % kwargs['dl_dst'] or ''
@@ -171,7 +174,7 @@ def del_flows(bridge, **kwargs):
     """ 
     Removes flows according to criteria passed as keyword.
     """
-    flow = _build_flow_expr(**kwargs)
+    flow = _build_flow_expr(delete=True, **kwargs)
     # out_port condition does not exist for all flow commands
     out_port = 'out_port' in kwargs and ",out_port=%s" % kwargs['out_port'] or ''
     flow = flow + out_port

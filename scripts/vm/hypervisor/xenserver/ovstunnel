@@ -109,6 +109,7 @@ def setup_ovs_bridge(session, args):
 	bridge = args.pop("bridge")
 	key = args.pop("key")
 	xs_nw_uuid = args.pop("xs_nw_uuid")
+	cs_host_id = args.pop("cs_host_id")
 	
 	res = lib.check_switch()
 	if res != "SUCCESS":
@@ -137,14 +138,19 @@ def setup_ovs_bridge(session, args):
 			result = "FAILURE:%s" %res
 		# Finally note in the xenapi network object that the network has 
 		# been configured
-		xs_nw_uuid = lib.do_cmd([xePath, "network-list",
+		xs_nw_uuid = lib.do_cmd([lib.XE_PATH, "network-list",
 							    "bridge=%s" % bridge, "--minimal"])
-		lib.do_cmd([xePath,"network-param-set", "uuid=%s" % xs_nw_uuid,
+		lib.do_cmd([lib.XE_PATH,"network-param-set", "uuid=%s" % xs_nw_uuid,
 				   "other-config:is-ovs-tun-network=True"])
-		lib.do_cmd([xePath,"network-param-set", "uuid=%s" % xs_nw_uuid,
-				   "other-config:ovs-setup=True"])
-			
-	logging.debug("Setup_ovs_bridge complete with result:%s" %result)
+		conf_hosts = lib.do_cmd([lib.XE_PATH,"network-param-get",
+					 	   "uuid=%s" % xs_nw_uuid,
+					 	   "param-name=other-config",
+					 	   "param-key=ovs-host-setup", "--minimal"])
+		conf_hosts = conf_hosts + ",%s" %cs_host_id
+		lib.do_cmd([lib.XE_PATH,"network-param-set", "uuid=%s" % xs_nw_uuid,
+				   "other-config:ovs-setup=%s" %conf_hosts])
+		#TODO: BLOCK IPV6
+	logging.debug("Setup_ovs_bridge completed with result:%s" %result)
 	return result
 
 
@@ -249,28 +255,6 @@ def create_tunnel(session, args):
 		             nw_dst='224.0.0.0/24', actions='drop')
 		drop_flow_setup = True
 		logging.debug("Broadcast drop rules added")
-		# add flow entry for allowing broadcast to reach ports already 
-		# configured on OVS bridge
-		cmd_xs_nw_uuid = [xePath, "network-list",
-						  "bridge=%s" % bridge, "--minimal"]
-		xs_nw_uuid = lib.do_cmd(cmd_xs_nw_uuid)
-				
-		host_list_cmd = [xePath, 'host-list', '--minimal']
-		host_list_str = lib.do_cmd(host_list_cmd)
-		# need only first host
-		host_uuid = host_list_str.split(',')[0].strip()
-		version_cmd = [xePath, 'host-param-get', 'uuid=%s' % host_uuid,
-					   'param-name=software-version',
-					   'param-key=product_version']
-		version = lib.do_cmd(version_cmd)
-		vif_ofports = vif_ofport_list_handlers[version[0]](xs_nw_uuid)
-		if len(vif_ofports) > 0:
-			action = "".join("output:%s," %ofport
-							for ofport in vif_ofports)[:-1]
-			lib.add_flow(bridge, priority=1100, in_port=tun_ofport,
-						 dl_dst='ff:ff:ff:ff:ff:ff', actions=action)
-			lib.add_flow(bridge, priority=1100, in_port=tun_ofport,
-						 nw_dst='224.0.0.0/24', actions=action)
 		return "SUCCESS:%s" % name
 	except:
 		logging.debug("An unexpected error occured. Rolling back")
@@ -288,34 +272,19 @@ def create_tunnel(session, args):
 @echo
 def destroy_tunnel(session, args):
 	bridge = args.pop("bridge")
-	inPort = args.pop("in_port")
-
-	# delete all gre ports on bridge
-	if inPort == "[]":
-		listPorts = [lib.VSCTL_PATH, "list-ports %s" % bridge]
-		res = lib.do_cmd(listPorts, True)
-		for p in res:
-			if bridge in p:
-				lib.del_port(bridge, p)
-		lib.del_all_flows(bridge)
-	else:
-		ofport = get_field_of_interface(inPort, "ofport")
-		lib.del_flows(bridge, in_port=ofport)
-		lib.del_port(bridge, inPort)
-
+	iface_name = args.pop("in_port")
+	logging.debug("Destroying tunnel at port %s for bridge %s" 
+				% (iface_name, bridge))
+	ofport = get_field_of_interface(iface_name, "ofport")
+	lib.del_flows(bridge, in_port=ofport)
+	lib.del_port(bridge, iface_name)
 	return "SUCCESS"
 
 
-def get_field_of_interface(nameOruuid, field):
-	listIface = [lib.VSCTL_PATH, "list interface", nameOruuid]
-	res = lib.do_cmd(listIface, True)
-
-	for i in res:
-		if field in i:
-			(x, r) = i.split(":")
-			return r.lstrip().rstrip()
-	return None
-
+def get_field_of_interface(iface_name, field):
+	get_iface_cmd = [lib.VSCTL_PATH, "get","interface", iface_name, field]
+	res = lib.do_cmd(get_iface_cmd)
+	return res
 
 if __name__ == "__main__":
 	XenAPIPlugin.dispatch({"create_tunnel":create_tunnel, 
