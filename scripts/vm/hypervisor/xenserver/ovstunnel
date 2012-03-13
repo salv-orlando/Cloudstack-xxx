@@ -165,10 +165,7 @@ def destroy_ovs_bridge(session, args):
 							    "bridge=%s" % bridge, "--minimal"])
 		lib.do_cmd([xePath,"network-param-set", "uuid=%s" % xs_nw_uuid,
 				   "other-config:ovs-setup=False"])
-		if res:
-			result = "SUCCESS:%s" %bridge 
-		else:
-			result = "FAILURE:%s" %res
+		result = "SUCCESS:%s" %bridge 
 
 	logging.debug("Destroy_ovs_bridge completed with result:%s" %result)
 	return result

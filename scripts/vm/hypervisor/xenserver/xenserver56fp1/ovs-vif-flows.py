@@ -52,9 +52,10 @@ def main(command, vif_raw):
 	# find xs network for this bridge, verify is used for ovs tunnel network
     xs_nw_uuid = pluginlib.do_cmd([pluginlib.XE_PATH, "network-list",
 								   "bridge=%s" % bridge, "--minimal"])
-    result = lib.do_cmd([pluginlib.XE_PATH,"network-param-get",
-						 "uuid=%s" % xs_nw_uuid, "param-name=other-config",
-						 "param-key=is-ovs-tun-network", "--minimal"])
+    result = pluginlib.do_cmd([pluginlib.XE_PATH,"network-param-get",
+						       "uuid=%s" % xs_nw_uuid,
+						       "param-name=other-config",
+						       "param-key=is-ovs-tun-network", "--minimal"])
 
     if result != 'True':
 		return
